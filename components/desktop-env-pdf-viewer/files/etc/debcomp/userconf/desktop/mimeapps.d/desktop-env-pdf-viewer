@@ -1,0 +1,9 @@
+application/pdf=qpdfview.desktop
+application/postscript=qpdfview.desktop
+application/x-pdf=qpdfview.desktop
+image/pdf=qpdfview.desktop
+image/vnd.djvu=qpdfview.desktop
+image/x-djvu=qpdfview.desktop
+image/x-pdf=qpdfview.desktop
+text/pdf=qpdfview.desktop
+text/x-pdf=qpdfview.desktop

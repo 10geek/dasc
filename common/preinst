@@ -1,0 +1,183 @@
+#!/usr/bin/env sh
+
+is_pkg_installed() {
+	dpkg --get-selections | LC_ALL=C awk -- 'BEGIN {
+		for(i = 1; i < ARGC; i++) pkgs[ARGV[i]] = ""
+		ARGC = exit_code = 1
+	}
+	$2 == "install" {
+		sub(/:[^:]+$/, "", $1)
+		if($1 in pkgs) { exit_code = 0; exit }
+	} END { exit exit_code }' "$@"
+}
+
+
+debcomp fs-diversify "$PREPDIR" || exit
+
+#/*****************************************************************************\
+# Checking for all POSIX utilities except `lp`, because it is part of
+# other component
+#\............................................................................./
+unset -v not_found_utils
+old_ifs=$IFS; IFS=:
+for util in \
+	'[' at awk basename batch bc cat chgrp chmod chown cksum cmp comm cp \
+	crontab csplit cut date dd diff dirname du echo ed env expand expr false \
+	file find fold gencat getconf grep head iconv id join kill ln locale \
+	localedef logger logname m4 mailx man mkdir mkfifo mv newgrp nice nohup od \
+	paste patch pathchk pax pr printf ps pwd renice rm rmdir sed sh sleep sort \
+	split strings stty tabs tail tee test time touch tput tr true tsort tty \
+	uname unexpand uniq uudecode uuencode wc write xargs
+do
+	is_util_exist=0
+	for util_path in $PATH; do
+		[ ":$util_path" = ":$CONFDIR" ] && continue
+		[ -f "$util_path/$util" ] && [ -x "$util_path/$util" ] && {
+			is_util_exist=1
+			break
+		}
+	done
+	[ $is_util_exist -eq 0 ] && not_found_utils=$not_found_utils', `'$util\'
+done
+IFS=$old_ifs
+not_found_utils=${not_found_utils#, }
+[ -n "$not_found_utils" ] && {
+	debcomp log -e "checking POSIX utilities failed: $not_found_utils is not found in the system"
+	exit 1
+}
+
+#/*****************************************************************************\
+# Creating config files based on existing ones
+#\............................................................................./
+for abstr in account auth password session session-noninteractive; do
+	case $abstr in
+	session-noninteractive)
+		type=session;;
+	*)
+		type=$abstr;;
+	esac
+	cat "/etc/pam.d/common-$abstr" > "$PREPDIR/etc/pam.d/common-$abstr" || exit
+	printf '\n%s\n' \
+		"$type required pam_exec.so stdout quiet /usr/local/share/dasc/libexec/pam-hook $abstr" >> \
+		"$PREPDIR/etc/pam.d/common-$abstr" || exit
+done
+
+#/*****************************************************************************\
+# Generating files from macro files
+#\............................................................................./
+chmod +x "$PREPDIR/usr/local/bin/awkmacro" || exit
+find "$PREPDIR" -type f -name '*.awm' -exec sh -c '{
+	case $0 in "$PREPDIR/etc/debcomp/userconf"/*) exit; esac
+	"$PREPDIR/usr/local/bin/awkmacro" "$0" > "${0%.*}" &&
+	rm -f "$0"
+} || kill -INT "$PPID"' {} \; || exit
+
+#/*****************************************************************************\
+# Changing permissions
+#\............................................................................./
+find \
+	"$PREPDIR/etc/debcomp/userconf/common/preinst.d" \
+	"$PREPDIR/etc/debcomp/userconf/common/postinst.d" \
+	"$PREPDIR/etc/dasc/events" \
+	"$PREPDIR/usr/local/bin" \
+	"$PREPDIR/usr/local/sbin" \
+	"$PREPDIR/usr/local/share/dasc/libexec" \
+	-type f -exec sh -c 'chmod +x "$0" || kill -INT "$PPID"' {} \; || exit
+chmod +x "$PREPDIR/usr/local/share/doc/libtui-shell/demo" || exit
+chmod 700 \
+	"$PREPDIR/etc/dasc/events" \
+	"$PREPDIR/etc/debcomp/local" \
+	"$PREPDIR/etc/polkit-1/localauthority" \
+	"$PREPDIR/var/local/lib/dasc" || exit
+
+#/*****************************************************************************\
+# Building fzf
+#\............................................................................./
+(
+	debcomp wait-dpkg-lock-release &&
+	apt-get -y --no-install-recommends install golang-go make &&
+	cd "$TMPDIR" &&
+	tar -xJf "$CONFDIR/$COMPONENT/tarballs/fzf.tar.xz" &&
+	cd builddir && {
+		version=$(grep -x 'version=[A-Za-z0-9.-]*' install) &&
+		eval "$version"
+	} || {
+		debcomp log -e 'unable to get fzf version'
+		exit 1
+	} &&
+	HOME=$TMPDIR/homedir FZF_VERSION=$version FZF_REVISION=tarball make && {
+		executable=$(find target -type f -perm /111 -exec sh -c 'printf %s\\n "$0"; kill -INT "$PPID"' {} \;) 2>/dev/null
+		[ -n "$executable" ] || {
+			debcomp log -e 'unable to find fzf executable'
+			exit 1
+		}
+	} &&
+	cp "$executable" "$PREPDIR/usr/local/bin/fzf" &&
+	chown root:root "$PREPDIR/usr/local/bin/fzf" &&
+	chmod 755 "$PREPDIR/usr/local/bin/fzf" &&
+	mkdir -p "$PREPDIR/usr/local/share/man/man1" &&
+	gzip -c man/man1/fzf.1 > "$PREPDIR/usr/local/share/man/man1/fzf.1.gz" &&
+	cd "$TMPDIR" && rm -rf ./*
+) || exit
+
+#/*****************************************************************************\
+# Preparing new time zone configuration
+#\............................................................................./
+[ -z "$CONF_TIMEZONE" ] || {
+	[ -f "/usr/share/zoneinfo/$CONF_TIMEZONE" ] || {
+		debcomp log -e "invalid timezone: file \`/usr/share/zoneinfo/$CONF_TIMEZONE' does not exist"
+		exit 1
+	}
+	ln -s "/usr/share/zoneinfo/$CONF_TIMEZONE" "$PREPDIR/etc/localtime" &&
+	printf %s\\n "$CONF_TIMEZONE" > "$PREPDIR/etc/timezone"
+} || exit
+
+#/*****************************************************************************\
+# Removing files and directories remaining after removing packages, such as
+# /root/snap, /etc/netplan, /etc/cloud, etc.
+#\............................................................................./
+[ $CONF_REMOVE_REMAINS -eq 1 ] && {
+	if [ $CONF_REMOVE_REMAINS_PERMANENTLY -eq 1 ]; then
+		remove_path() { rm -rf "$1"; }
+	else
+		remove_path() { debcomp remove "$1"; }
+	fi
+	is_pkg_installed cloud-init || {
+		remove_path /etc/cloud &&
+		remove_path /var/lib/cloud &&
+		rm -f \
+			/var/log/cloud-init-output.log \
+			/var/log/cloud-init.log
+	} || exit
+	is_pkg_installed command-not-found ||
+		remove_path /var/lib/command-not-found || exit
+	is_pkg_installed fwupd ||
+		remove_path /var/lib/fwupd || exit
+	is_pkg_installed netplan netplan.io ||
+		remove_path /etc/netplan || exit
+	is_pkg_installed pollinate ||
+		remove_path /etc/pollinate || exit
+	is_pkg_installed rsyslog syslog-ng-core inetutils-syslogd busybox-syslogd socklog-run || {
+		for file in in \
+			/var/log/auth.log \
+			/var/log/auth.log.* \
+			/var/log/kern.log \
+			/var/log/kern.log.* \
+			/var/log/syslog \
+			/var/log/syslog.*
+		do
+			! [ -f "$file" ] || rm -f "$file" || exit
+		done
+	}
+	is_pkg_installed snapd ||
+		remove_path ~/snap || exit
+}
+
+#/*****************************************************************************\
+# Enabling text console on the serial port
+#\............................................................................./
+[ $CONF_ENABLE_SERIAL_PORT_CONSOLE -ne 1 ] || {
+	mkdir -p "$PREPDIR/etc/systemd/system/getty.target.wants" &&
+	ln -s /lib/systemd/system/getty@.service "$PREPDIR/etc/systemd/system/getty.target.wants/getty@ttyS0.service" &&
+	systemctl start getty@ttyS0.service
+} || exit

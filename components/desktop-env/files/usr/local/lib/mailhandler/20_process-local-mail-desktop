@@ -1,0 +1,44 @@
+if [ -f /usr/local/share/dasc/libexec/desktop/notify-new-mail ]; then
+	process_local_mail__detect_display() {
+		[ -n "$DISPLAY" ] && return
+
+		# If X running on display :0
+		if xset -display :0 q > /dev/null 2>&1; then
+			export DISPLAY=:0
+		else
+			process_local_mail__detect_display() { return 1; }
+			return 1
+		fi
+	}
+	process_local_mail__notify() {
+		process_local_mail__detect_display &&
+		/usr/local/share/dasc/libexec/desktop/notify-new-mail mailhandler \
+			"$(get_mail_header from | head -n1)" \
+			"$(get_mail_header to | head -n1)" \
+			"$(get_mail_header subject | head -n1)" \
+			"$(get_mail_body_text | head -n5)"
+	}
+else
+	process_local_mail__notify() { :; }
+fi
+
+process_local_mail() {
+	if du -c "$MAIL" "$MAILFILE" | LC_ALL=C awk -- 'BEGIN { ARGC = 1 } END { exit $1 > 1024 * ARGV[1] }' "$MBOX_MAX_SIZE"; then
+		[ $(($(date +%s) - $(stat -c %Y "$MAIL"))) -ge 60 ]; set $?
+		mail_send_mbox < "$MAILFILE" || return 1
+		if ps -U "$(id -u)" -o comm | grep -qFx claws-mail; then
+			[ $1 -eq 0 ] && claws-mail --receive-all
+		else
+			process_local_mail__notify
+		fi
+	else
+		err "process_local_mail(): maximum mailbox size ($MBOX_MAX_SIZE MiB) is exceeded"
+		process_local_mail__notify
+		process_local_mail__detect_display &&
+		notify-send -a mailhandler -i mail-message \
+			"Maximum mailbox size ($MBOX_MAX_SIZE MiB) is exceeded!" \
+			"Current mailbox size: $(du -h "$MAIL")"
+	fi
+
+	return 0
+}

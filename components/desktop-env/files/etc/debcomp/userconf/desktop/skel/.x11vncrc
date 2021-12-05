@@ -1,0 +1,231 @@
+#
+# This file is based on the current x11vnc settings and can be used as
+# as a ~/.x11vncrc defaults file.  If saved to another filename, these
+# settings can be passed to x11vnc at startup via "-rc <filename>".
+#
+# The rc file comment character is "#".  Use "\#" for the literal char.
+# You can continue lines using "\" as the last character of a line.
+#
+# Lines beginning with "#d" indicate the parameter value is at its default
+# setting and you probably want to leave it commented out.
+#
+# Lines beginning with "#?" indicate parameters you probably do not
+# want to hardwire to the current setting (uncomment if you want that).
+#
+# Some parameters are boolean, e.g. -forever, and take no value; while
+# the others, e.g. -wait 50, take a string or numerical value.
+#
+# For booleans, the line will end with comment "default: on" or
+# "default: off" indicating the default setting.  (Note: often
+# "-nofoobar" corresponds to option "-foobar" and the former is
+# "the default", e.g. -norepeat).
+#
+# For string or numerical options, the value "" in a line below
+# means the default is unset and you will need to supply some non-empty
+# value to use the parameter.  For reference, if the default differs
+# from your value it placed at the end of the line as a comment.
+#
+# Feel free to uncomment or comment any of the lines or to change any
+# of the values of the parameters.  Don't be surprised that most if not
+# all of the lines below are commented out (x11vnc has so many parameters,
+# most of them will be at their default values).
+#-------------------------------------------------------------------------
+
+-rfbport 5900			# default: 5900
+-rfbportv6 5900			# default: 5900
+# -24to32			# default: off
+# -6				# default: on
+# -8to24			# default: off
+-accept popup			# default: ""
+# -add_keysyms			# default: on
+# -afteraccept ""
+# -allinput			# default: off
+# -allow ""
+# -alphacut 240
+# -alphafrac 0.330000
+# -alpharemove			# default: off
+# -always_inject		# default: off
+# -arrow 1
+# -auth ""
+# -autoport 0
+# -bg				# default: off
+# -blackout ""
+# -buttonmap ""
+# -capslock			# default: off
+# -chatwindow			# default: off
+# -clear_all			# default: off
+# -clear_keys			# default: off
+# -clear_mods			# default: off
+# -clientdpms			# default: off
+# -clip ""
+# -connect ""
+# -cursor most
+# -cursor_drag			# default: off
+# -cursorpos			# default: on
+# -dbg				# default: off
+# -debug_grabs			# default: off
+# -debug_keyboard		# default: off
+# -debug_ncache		# default: off
+# -debug_pointer		# default: off
+# -debug_scroll		# default: off
+# -debug_sel			# default: off
+# -debug_tiles			# default: off
+# -debug_wireframe 0
+-defer 10			# default:  20
+# -desktop localhost:0.0		# default:  ""
+# -display localhost:0.0		# default:  ""
+# -enablehttpproxy		# default: off
+# -enc ""
+# -extra_fbur 1
+# -fixscreen ""
+# -flashcmap			# default: off
+# -flipbyteorder		# default: off
+# -forcedpms			# default: off
+-forever			# default: off
+# -fs 0.750000
+# -fuzz 2
+# -gaps 4
+# -gone ""
+# -grabalways			# default: off
+# -grabkbd			# default: off
+# -grabptr			# default: off
+# -grow 3
+# -gui tray=setpass		# default:  ""
+# -http			# default: off
+# -httpdir ""
+# -httpport 0
+# -https -1
+# -httpsredir 0
+# -id 0x0
+# -input ""
+# -input_skip 10
+# -listen ""
+# -localhost			# default: off
+# -logfile /dev/null	# default:  ""
+# -maciconanim 450
+# -macmenu			# default: off
+# -macnoresize			# default: off
+# -macnosaver			# default: off
+# -macnoswap			# default: off
+# -macnowait			# default: off
+# -macwheel 5
+# -modtweak			# default: on
+# -nap				# default: on
+# -ncache				# default: on
+# -ncache_cr			# default: off
+# -ncache_keep_anims		# default: off
+# -ncache_no_dtchange		# default: off
+# -ncache_no_moveraise		# default: off
+# -ncache_no_rootpixmap	# default: off
+# -ncache_old_wm		# default: off
+# -ncache_pad 0
+# -noalphablend		# default: off
+# -nobell			# default: off
+# -noclipboard			# default: off
+# -nocursorshape		# default: off
+# -nodpms			# default: off
+# -nodragging			# default: off
+# -nofb			# default: off
+# -nofbpm			# default: off
+# -noipv4			# default: off
+# -noipv6			# default: off
+# -nolookup			# default: off
+# -noprimary			# default: off
+-nopw				# default: off
+# -norepeat			# default: on
+# -nosel			# default: off
+# -noserverdpms		# default: off
+# -nosetclipboard		# default: off
+# -nosetprimary		# default: off
+# -noshm			# default: off
+# -notruecolor			# default: off
+# -noultraext			# default: off
+# -nowait_bog			# default: off
+# -noxfixes			# default: off
+# -noxrecord			# default: off
+# -onetile			# default: off
+# -overlay			# default: off
+# -overlay_nocursor		# default: off
+# -padgeom ""
+# -passwd ""
+# -passwdfile ""
+# -pipeinput ""
+# -pointer_mode 2
+# -progressive 0
+# -proxy ""
+# -quiet			# default: off
+# -rawfb ""
+# -readtimeout 20
+# -reflect ""
+# -remap ""
+-repeat			# default: off
+# -rfbauth ""
+# -rfbversion 3.8
+# -rfbwait ""
+# -rotate ""
+# -safer			# default: off
+# -scale ""
+# -scale_cursor ""
+# -scr_area 60000
+# -scr_inc \#\#Nomatch
+# -scr_keyrepeat 4-20
+# -scr_keys ""
+# -scr_parms 0+64+32+32,0.02+0.10+0.9,0.03+0.06+0.5+0.1+5.0
+# -scr_skip \#\#Soffice.bin,\#\#StarOffice,\#\#OpenOffice
+# -scr_term term
+# -sb 60
+# -scrollcopyrect always
+# -seldir ""
+# -setdefer 1
+-shared			# default: off
+# -shiftcmap 0
+# -sid 0x0
+# -sigpipe ""
+# -skip_dups			# default: off
+# -skip_keycodes ""
+# -skip_lockkeys		# default: off
+# -sleepin ""
+# -sloppy_keys			# default: off
+# -slow_fb 0.00
+# -snapfb			# default: off
+# -solid			# default: off
+# -solid ""
+# -speeds ""
+# -ssl				# default: off
+# -ssl ""
+# -ssldir ""
+# -ssltimeout -1
+# -sslverify ""
+# -stunnel			# default: off
+# -stunnel ""
+# -threads			# default: off
+# -tightfilexfer		# default: off
+# -timeout 0
+# -ultrafilexfer		# default: off
+# -unixpw			# default: off
+# -unixpw ""
+# -unixpw_nis			# default: off
+# -unixpw_nis ""
+# -unsafe			# default: off
+# -usepw			# default: off
+# -viewonly			# default: off
+# -viewpasswd ""
+# -visual ""
+# -vncconnect			# default: on
+-wait 10			# default:  20
+# -wait_ui 2.00
+# -wirecopyrect always
+# -wireframe			# default: on
+# -wireframe 0xff,2,0,32+8+8+8,all,0.15+0.30+5.0+0.125
+# -wmdt ""
+# -xd_area 20000
+# -xd_mem 1.000
+# -xdamage			# default: on
+# -xinerama			# default: on
+# -xkb				# default: off
+# -xrandr			# default: off
+# -xrandr ""
+# -xrefresh 0.00
+# -xtrap			# default: off
+# -xwarppointer		# default: off
+# -zeroconf			# default: off

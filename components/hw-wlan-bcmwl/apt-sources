@@ -1,0 +1,8 @@
+# Components containing software that does not comply with DFSG requirements or
+# requires software outside the distribution
+deb http://deb.debian.org/debian/ bullseye contrib non-free
+deb-src http://deb.debian.org/debian/ bullseye contrib non-free
+deb http://security.debian.org/debian-security bullseye-security contrib non-free
+deb-src http://security.debian.org/debian-security bullseye-security contrib non-free
+deb http://deb.debian.org/debian/ bullseye-updates contrib non-free
+deb-src http://deb.debian.org/debian/ bullseye-updates contrib non-free

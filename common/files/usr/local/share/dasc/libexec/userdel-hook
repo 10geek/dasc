@@ -1,0 +1,66 @@
+#!/usr/bin/env sh
+
+trap '
+	EXIT_CODE=$?
+	[ $EXIT_CODE -ne 0 ] && kill -TERM "$PPID"
+	exit $EXIT_CODE' \
+	EXIT
+
+[ -z "$1" ] && {
+	printf %s\\n "$0: the first argument <username> is not specified or is an empty string" >&2
+	exit 1
+}
+EVENT_USER=$1
+
+EVENT_UID_MIN=$(
+	LC_ALL=C awk -v exit_code=10 '
+	!/^[\t ]*#/ && $1 == "UID_MIN" { print $2; exit_code = 0; exit }
+	END { exit exit_code }' /etc/login.defs
+) || {
+	[ $? -eq 10 ] && printf %s\\n "$0: item UID_MIN is not defined in /etc/login.defs file" >&2
+	exit 1
+}
+
+user_data=$(
+	getent passwd | LC_ALL=C awk -F: -- '
+	BEGIN { ARGC = 1 }
+	$1 == ARGV[1] { print $0; exit }' "$EVENT_USER"
+) || unset -v user_data
+[ -z "$user_data" ] && {
+	printf %s\\n "$0: unable to get information about the \`$EVENT_USER' user from the /etc/passwd file" >&2
+	exit 1
+}
+
+EVENT_UID=$(
+	printf %s "$user_data" | LC_ALL=C awk -F: '{ if(int($3 + 0) == $3) print $3; exit }'
+) || unset -v EVENT_UID
+[ -z "$EVENT_UID" ] && {
+	printf %s\\n "$0: unable to get UID of the user \`$EVENT_USER'" >&2
+	exit 1
+}
+
+EVENT_HOME=$(
+	printf %s "$user_data" | LC_ALL=C awk -F: '{ print $6; exit }'
+) || {
+	printf %s\\n "$0: unable to get home directory path of the user \`$EVENT_USER'" >&2
+	exit 1
+}
+
+export \
+	EVENT_HOME \
+	EVENT_UID \
+	EVENT_UID_MIN \
+	EVENT_USER || exit 1
+
+lc_all_old=$LC_ALL; LC_ALL=C
+for file in /etc/dasc/events/userdel/*; do
+	LC_ALL=$lc_all_old
+	if [ -f "$file" ] && [ -x "$file" ]; then
+		"$file" || {
+			printf %s\\n "$0: \`$file' exited with code $?" >&2
+			exit 1
+		}
+	fi
+done
+
+exit 0

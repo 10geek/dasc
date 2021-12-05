@@ -1,0 +1,5 @@
+name=Desktop environment / Text editor (geany)
+name[ru]=Окружение рабочего стола / Текстовый редактор (geany)
+
+depends/desktop-env
+after/desktop-env

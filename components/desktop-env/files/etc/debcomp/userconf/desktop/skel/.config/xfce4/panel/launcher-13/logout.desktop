@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Logout
+Name[ru]=Выход из системы
+Comment=
+Exec=gsesctl logout
+Icon=system-log-out
+Path=
+Terminal=false
+StartupNotify=false

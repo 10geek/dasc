@@ -1,0 +1,44 @@
+name=Damn Advanced System Configuration
+description=Damn Advanced System Configuration (DASC)
+osrelease=debian 11
+
+
+conf/add_initial_user_to_wheel/type=boolean
+conf/add_initial_user_to_wheel/name=Add the initial user (usually with UID 1000) to the "wheel" group
+conf/add_initial_user_to_wheel/name[ru]=Добавить начального пользователя (обычно с UID 1000) в группу "wheel"
+conf/add_initial_user_to_wheel/default=1
+
+conf/remove_remains/type=boolean
+conf/remove_remains/name=Remove files and directories remaining after removing packages
+conf/remove_remains/name[ru]=Удалить файлы и каталоги, оставшиеся после удаления пакетов
+conf/remove_remains/description=Remove files and directories remaining after removing packages, such as /root/snap, /etc/netplan, /etc/cloud, etc.
+conf/remove_remains/description[ru]=Удалить файлы и каталоги, оставшиеся после удаления пакетов, такие, как /root/snap, /etc/netplan, /etc/cloud и т. д.
+conf/remove_remains/default=1
+
+conf/remove_remains_permanently/type=boolean
+conf/remove_remains_permanently/name=Permanently remove files and directories remaining after removing packages
+conf/remove_remains_permanently/name[ru]=Навсегда удалить файлы и каталоги, оставшиеся после удаления пакетов
+conf/remove_remains_permanently/description=Files and directories will not be preserved for restore on a later rollback.
+conf/remove_remains_permanently/description[ru]=Файлы и каталоги не будут сохранены для восстановления при последующем откате.
+
+conf/remove_installer_logs/type=boolean
+conf/remove_installer_logs/name=Remove installer logs from /var/log/installer
+conf/remove_installer_logs/name[ru]=Удалить логи установщика из /var/log/installer
+conf/remove_installer_logs/default=1
+
+conf/timezone/type=string
+conf/timezone/name=Time zone (optional)
+conf/timezone/name[ru]=Часовой пояс (опционально)
+conf/timezone/description=Example: "US/Eastern" (see /usr/share/zoneinfo or `timedatectl list-timezones`). If the time zone is not specified, it will not be changed.
+conf/timezone/description[ru]=Пример: "Europe/Moscow" (см. /usr/share/zoneinfo или `timedatectl list-timezones`). Если часовой пояс не указан, то он не будет изменён.
+conf/timezone/regexp=([A-Za-z0-9+-]+(/[A-Za-z0-9+-]+)*)?
+
+conf/enable_serial_port_console/type=boolean
+conf/enable_serial_port_console/name=Enable text console on the serial port
+conf/enable_serial_port_console/name[ru]=Включить текстовую консоль на последовательном порту
+
+conf/prevent_users_shutdown/type=boolean
+conf/prevent_users_shutdown/name=Prevent all users except root from shutting down the system
+conf/prevent_users_shutdown/name[ru]=Запретить всем пользователям, кроме root, завершать работу системы
+conf/prevent_users_shutdown/description=Prevent all users other than root from performing actions such as shutdown, reboot, suspend, hibernate.
+conf/prevent_users_shutdown/description[ru]=Запретить всем пользователям, кроме root, выполнять такие действия, как завершение работы системы, перезагрузка, переход в ждущий и спящий режимы.

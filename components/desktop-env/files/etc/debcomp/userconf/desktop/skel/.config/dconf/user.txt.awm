@@ -1,0 +1,96 @@
+[org/gnome/gnome-system-monitor]
+show-dependencies=true
+show-whose-processes='user'
+update-interval=1000
+smooth-refresh=true
+graph-update-interval=1000
+network-in-bits=true
+disks-interval=5000
+maximized=false
+
+[org/gnome/gnome-system-monitor/proctree]
+columns-order=[0, 3, 4, 15, 6, 8, 1, 19, 12, 2, 9, 10, 11, 13, 14, 16, 17, 18, 20, 21, 22, 23, 24, 25, 26]
+sort-col=15
+sort-order=0
+col-1-width=105
+col-2-visible=true
+col-6-visible=true
+col-6-width=80
+col-8-width=42
+col-12-width=80
+col-15-width=80
+col-19-visible=true
+col-22-visible=false
+col-23-visible=false
+col-24-width=80
+col-25-width=80
+col-26-visible=false
+
+[org/gnome/nm-applet]
+disable-connected-notifications=true
+
+[org/gtk/settings/file-chooser]
+window-position=(0, 0)
+window-size=(700, 480)
+date-format='regular'
+location-mode='path-bar'
+show-hidden=false
+show-size-column=true
+show-type-column=false
+sidebar-width=165
+sort-column='name'
+sort-directories-first=true
+sort-order='ascending'
+startup-mode='cwd'
+type-format='category'
+
+[org/onboard]
+schema-version='2.3'
+system-theme-associations={'HighContrast': 'HighContrast', 'HighContrastInverse': 'HighContrastInverse', 'LowContrast': 'LowContrast', 'ContrastHighInverse': 'HighContrastInverse', 'Default': '', 'Custom-Vertex-Dark': '<?awk print ENVIRON["HOME"] ?>/.local/share/onboard/themes/Custom.theme'}
+start-minimized=true
+use-system-defaults=false
+current-settings-page=0
+theme='<?awk print ENVIRON["HOME"] ?>/.local/share/onboard/themes/Custom.theme'
+layout='/usr/share/onboard/layouts/Full Keyboard.onboard'
+snippets=@as []
+
+[org/onboard/theme-settings]
+color-scheme='/usr/share/onboard/themes/Black.colors'
+key-fill-gradient=30.0
+key-gradient-direction=0.0
+key-stroke-gradient=75.0
+key-label-font='Sans'
+key-label-overrides=['LWIN:Meta:', 'RWIN:Meta:']
+key-shadow-size=46.0
+key-shadow-strength=30.0
+key-size=97.0
+key-style='gradient'
+roundrect-radius=20.0
+
+[org/onboard/window]
+docking-enabled=true
+window-handles='E SE S SW W NW N NE M'
+enable-inactive-transparency=true
+transparent-background=false
+docking-aspect-change-range=[0.0, 1.0]
+
+[org/onboard/icon-palette]
+window-handles='M'
+
+[org/onboard/keyboard]
+default-key-action='single-stroke'
+sticky-key-behavior={'all': 'dblclick'}
+
+[apps/light-locker]
+idle-hint=false
+late-locking=false
+lock-after-screensaver=uint32 0
+lock-on-lid=false
+lock-on-suspend=true
+
+[apps/seahorse/windows/key-manager]
+width=680
+height=480
+
+[apps/seahorse/listing]
+item-filter='any'

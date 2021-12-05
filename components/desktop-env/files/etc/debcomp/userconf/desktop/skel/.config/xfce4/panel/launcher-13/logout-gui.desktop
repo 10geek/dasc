@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Select logout action
+Name[ru]=Выбор действия выхода из системы
+Comment=
+Exec=gsesctl
+Icon=system-log-out
+Path=
+Terminal=false
+StartupNotify=false

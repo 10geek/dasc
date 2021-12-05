@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+if [ "$1" = purge ]; then
+	for dir in /var/lib/mailhandler /var/log/mailhandler; do
+		[ -e "$dir" ] || continue
+		find "$dir" -path '/*/*/*/*' -prune -exec rm -rf {} \; || exit 1
+	done
+fi
+
+exit 0

@@ -1,0 +1,13 @@
+name=Desktop environment
+name[ru]=Окружение рабочего стола
+
+# Depends on teleporter
+depends/net-teleporter
+
+depends/display-server-xorg
+after/display-server-xorg
+
+conf/greeter_numlock_enable/type=boolean
+conf/greeter_numlock_enable/name=Enable Num Lock on the login screen
+conf/greeter_numlock_enable/name[ru]=Включить Num Lock на экране входа в систему
+conf/greeter_numlock_enable/default=1

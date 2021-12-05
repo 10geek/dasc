@@ -1,0 +1,93 @@
+#!/usr/bin/env sh
+
+[ "$USER_ID" -eq 0 ] && [ -d "$CONF_PATH/skel-root" ] && {
+	debcomp mergecp "$CONF_PATH/skel-root" "$HOME" "$BACKUP_PATH" || exit
+}
+
+# TODO: replace with extsh library equivalent
+lang=$(locale | LC_ALL=C awk '{
+	if(!sub(/^[\t ]*LC_MESSAGES=/, "")) next
+	if(sub(/^"/, "")) {
+		if(!sub(/"$/, "")) next
+	} else if(sub(/^\47/, "")) {
+		if(!sub(/\47$/, "")) next
+	}
+	sub(/@.*/, "")
+	if(tolower($0) !~ /^[A-Za-z]+(_[A-Za-z]+)?\.utf-?8$/) next
+	sub(/\..*/, "")
+	print $0
+	exit
+}')
+
+#/*****************************************************************************\
+# Defining awkmacro environment variables
+#\............................................................................./
+export \
+	AWM_LANG_FULL="$lang" \
+	AWM_LANG="${lang%_*}" || exit
+
+#/*****************************************************************************\
+# Generating files from macro files
+#\............................................................................./
+{
+	cd "$CONF_PATH/skel" &&
+	find . -type f -name '*.awm' -exec sh -c 'path=${0#.}; path=${path%.*}; {
+		{ ! [ -e "$HOME$path" ] || debcomp remove "$HOME$path"; } &&
+		awkmacro "$HOME$path.awm" > "$HOME$path" &&
+		rm -f "$HOME$path.awm"
+	} || kill -INT "$PPID"' {} \;
+} || exit
+
+#/*****************************************************************************\
+# Setting crontab
+#\............................................................................./
+if [ "$USER_ID" -eq 0 ]; then
+	cronpath=$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+else
+	cronpath=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+fi
+
+! crontab -l 2>/dev/null | LC_ALL=C awk '{ exit 1 }' ||
+crontab << EOF || exit
+PATH=$cronpath
+
+# Example of job definition:
+#
+#      *  any value
+#  1,2,3  values list
+#   0-10  range of values (every minute from 0 through 10 inclusive)
+#    */2  step values (every 2nd minute)
+# 0-10/2  step values in range (every 2nd minute from 0 through 10 inclusive)
+#
+# .------------ minute (0-59)
+# | .---------- hour (0-23)
+# | | .-------- day of month (1-31)
+# | | | .------ month (1-12 OR jan,feb,mar,apr,may,jun,jul,aug,sep,oct,nov,dec)
+# | | | | .---- day of week (0-6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+# | | | | |
+# * * * * *$(printf \\t)command
+
+@reboot mailhandler -d
+EOF
+
+#/*****************************************************************************\
+# Creating and editing files
+#\............................................................................./
+{
+	lesskey &&
+	touch ~/.ssh/authorized_keys
+} || exit
+
+#/*****************************************************************************\
+# Changing permissions
+#\............................................................................./
+{
+	chmod 700 \
+		~/.elinks \
+		~/.ssh &&
+	chmod 644 \
+		~/.less &&
+	chmod 600 \
+		~/.mailhandlerrc \
+		~/.ssh/authorized_keys
+} || exit

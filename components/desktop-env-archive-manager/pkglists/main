@@ -1,0 +1,13 @@
+engrampa manual
+arj auto for_manual(engrampa) for(engrampa)
+binutils auto for_manual(engrampa) for(engrampa)
+cpio auto for_manual(engrampa) for(engrampa)
+lzop auto for_manual(engrampa) for(engrampa)
+rpm2cpio auto for_manual(engrampa) for(engrampa)
+sharutils auto for_manual(engrampa) for(engrampa)
+unace auto for_manual(engrampa) for(engrampa)
+unalz auto for_manual(engrampa) for(engrampa)
+unar auto for_manual(engrampa) for(engrampa)
+unzip auto for_manual(engrampa) for(engrampa zip)
+xz-utils auto for_manual(engrampa) for(tar engrampa)
+zip auto for_manual(engrampa) for(unzip engrampa)

@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+
+script_name=${0##*/}
+
+[ $# -eq 1 ] || [ $# -eq 2 ] || {
+	printf %s\\n "Usage: $script_name <process_name> [signal]" >&2
+	exit 1
+}
+
+ps -U "$(id -u)" -o pid,lsession,args | LC_ALL=C awk -- '
+BEGIN {
+	if(ARGC > 3) signal = ARGV[3]
+	else signal = "TERM"
+	ARGC = 1
+}
+$2 == ARGV[1] {
+	sub(/.*\57/, "", $3)
+	if($3 != ARGV[2]) next
+	pids = pids " " $1
+}
+END {
+	if(pids == "") exit 1
+	exit system("kill -" signal pids)
+}' "$XDG_SESSION_ID" "$@"

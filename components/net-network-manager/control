@@ -1,0 +1,12 @@
+name=Network / NetworkManager
+name[ru]=Сеть / NetworkManager
+
+# Probably the software from the `net-base` component may be required for the
+# software from this component.
+depends/net-base
+
+conf/reload_nm_conf/type=boolean
+conf/reload_nm_conf/name=Reload NetworkManager configuration
+conf/reload_nm_conf/name[ru]=Перезагрузить конфигурацию NetworkManager
+conf/reload_nm_conf/description=It can make the network temporarily unavailable, and also result in a change of IP address.
+conf/reload_nm_conf/description[ru]=Может сделать сеть временно недоступной, а также привести к смене IP адреса.

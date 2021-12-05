@@ -1,0 +1,5 @@
+name=Desktop environment / Manager for connecting file systems via GIO and GVfs (gigolo)
+name[ru]=Окружение рабочего стола / Менеджер подключения файловых систем через GIO и GVfs (gigolo)
+
+depends/desktop-env
+after/desktop-env

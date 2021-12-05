@@ -1,0 +1,5 @@
+name=Desktop environment / Tool for converting video and audio (qwinff)
+name[ru]=Окружение рабочего стола / Утилита для конвертирования видео и аудио (qwinff)
+
+depends/desktop-env
+after/desktop-env

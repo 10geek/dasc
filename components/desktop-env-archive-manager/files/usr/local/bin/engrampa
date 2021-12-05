@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+
+. /usr/local/share/dasc/lib/app-wrapper || exit
+
+lock
+trap 'kill -TERM $! 2>/dev/null' $signals
+"$exec_path" "$@" &
+unlock
+waitpid $!
+exit_code=$?
+reset_signal_handlers
+
+has_errors=0
+lock
+
+is_running ||
+find ~/.cache -type d -name '.fr-*' -prune -exec sh -c \
+	'rm -rf "$0" || kill -INT "$PPID"' {} \; || has_errors=1
+
+dconf reset -f /org/mate/engrampa/dialogs/add/ || has_errors=1
+
+[ $has_errors -eq 0 ] || err_post_start

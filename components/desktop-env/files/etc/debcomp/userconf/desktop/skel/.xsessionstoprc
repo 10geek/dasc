@@ -1,0 +1,11 @@
+# FIXME: "pcmanfm --desktop" does not terminating by SIGTERM.
+# "pcmanfm --desktop-off" does not always work.
+gseskillall pcmanfm KILL
+
+# FIXME: While applications are working with the dconf database, the keyfile
+# becomes poorly formatted, for example, duplicate line feeds appear in it.
+# The following command will reformat the keyfile.
+dconf dump / > ~/.config/dconf/user.txt.new &&
+mv -f ~/.config/dconf/user.txt.new ~/.config/dconf/user.txt
+
+true

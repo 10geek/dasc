@@ -1,0 +1,85 @@
+#!/usr/bin/env sh
+
+# Usage: md5rm <file_path> <md5sum> ...
+md5rm() {
+	md5rm__file_path=$1; shift
+	{
+		[ -f "$md5rm__file_path" ] &&
+		! [ -h "$md5rm__file_path" ]
+	} || return 0
+	md5rm__md5sum=$(md5sum < "$md5rm__file_path")
+	md5rm__md5sum=${md5rm__md5sum%% *}
+	[ -n "$md5rm__md5sum" ] || return
+	while [ $# -ne 0 ]; do
+		[ ":$1" = ":$md5rm__md5sum" ] && {
+			rm -f -- "$md5rm__file_path"
+			return
+		}
+		shift
+	done
+	return 0
+}
+
+#/*****************************************************************************\
+# Remove specified files if they are in their original state
+#\............................................................................./
+(cd /etc/skel && exec find . -depth ! -path . -exec sh -c '
+	interrupt() { kill -INT "$PPID"; exit; }
+	set -- "$HOME${0#.}"
+	[ -e "$1" ] || exit
+	if [ -h "$0" ]; then type0=l
+	elif [ -d "$0" ]; then type0=d
+	else type0=f; fi
+	if [ -h "$1" ]; then type1=l
+	elif [ -d "$1" ]; then type1=d
+	else type1=f; fi
+	[ "$type0" = "$type1" ] || exit
+	if [ -h "$0" ]; then
+		{
+			dest0=$(readlink "$0"; echo .) &&
+			dest1=$(readlink "$1"; echo .)
+		} || interrupt
+		[ ":$dest0" = ":$dest1" ] && {
+			rm -f "$1" || interrupt
+		}
+	elif [ -d "$0" ]; then
+		is_dir_empty=1
+		for i in "$1"/* "$1"/.*; do
+			case $i in "$1/."|"$1/..") continue; esac
+			[ -e "$i" ] && {
+				is_dir_empty=0; break
+			}
+		done
+		[ $is_dir_empty -eq 1 ] && {
+			rmdir "$1" || interrupt
+		}
+	else
+		cmp -s "$0" "$1"
+		case $? in
+		0) rm -f "$1" || interrupt;;
+		1) ;;
+		*) interrupt;;
+		esac
+	fi
+' {} \;) || exit
+[ "$USER_ID" -ne 0 ] ||
+for file in bashrc profile; do
+	cmp -s "$HOME/.$file" "/usr/share/base-files/dot.$file" || continue
+	rm -f "$HOME/.$file" || exit
+done
+
+#/*****************************************************************************\
+# Removing unnecessary files
+#\............................................................................./
+{
+	debcomp remove ~/.bash_history &&
+	debcomp remove ~/.lesshst &&
+	rm -f \
+		~/.cache/motd.legal-displayed \
+		~/.sudo_as_admin_successful \
+		~/.wget-hsts &&
+	{
+		! [ -d ~/.cache ] || [ -h ~/.cache ] || ! debcomp isdirempty ~/.cache ||
+		rmdir ~/.cache
+	}
+} || exit

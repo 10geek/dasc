@@ -1,0 +1,7 @@
+- ISO image for the network installation.
+- An `extsh` is needed, which is a general-purpose modular POSIX-compliant library for shell and awk (currently under development).
+- All shell scripts must be migrated to `extsh`.
+- The libraries in `/usr/local/share/shell` are deprecated and should be removed after replacing with `extsh`.
+- An netfilter rules management is needed, including for isolating the network at the user level.
+- Functionality for isolating and securely restricting users is required (network, CPU, RAM, inodes, disk space, filesystem);
+- See the TODO comments, which can be found with the `grep -rF TODO:` command.

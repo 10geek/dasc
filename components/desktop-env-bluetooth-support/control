@@ -1,0 +1,5 @@
+name=Desktop environment / Bluetooth support (blueman, pulseaudio-module-bluetooth)
+name[ru]=Окружение рабочего стола / Поддержка Bluetooth (blueman, pulseaudio-module-bluetooth)
+
+depends/desktop-env
+after/desktop-env

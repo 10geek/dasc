@@ -1,0 +1,7 @@
+name=Desktop environment / Raster graphics editor (gimp)
+name[ru]=Окружение рабочего стола / Растровый графический редактор (gimp)
+description=Designed to work with raster image formats, such as JPEG, PNG, GIF, etc.
+description[ru]=Предназначен для работы с растровыми форматами изображений, таких, как JPEG, PNG, GIF и т. п.
+
+depends/desktop-env
+after/desktop-env

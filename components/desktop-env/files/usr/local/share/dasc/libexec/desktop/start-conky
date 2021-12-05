@@ -1,0 +1,108 @@
+#!/usr/bin/env sh
+MONITOR_INTERVAL=10
+
+
+getsubprocs() {
+	ps -Ao ppid,pid | LC_ALL=C awk -- 'BEGIN {
+		for(i = 1; i < ARGC; i++) ppids[ARGV[i]] = ""
+		ARGC = 1
+	}
+	$1 in ppids { print $2 }' "$@"
+}
+rkill() {
+	[ $# -lt 2 ] && return 1
+	RKILL__SIGNAME=$1; shift
+	kill -STOP "$@" > /dev/null 2>&1
+	rkill "$RKILL__SIGNAME" $(getsubprocs "$@")
+	kill "-$RKILL__SIGNAME" "$@" > /dev/null 2>&1
+	kill -CONT "$@" > /dev/null 2>&1
+}
+
+SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
+eval "signal_handler__register() { trap 'EXIT_CODE=\$?; trap '\\'\\'' \$SIGNALS; signal_handler EXIT' EXIT;$(
+	LC_ALL=C awk -- 'BEGIN { for(i = 1; i < ARGC; i++) print "trap \47trap \47\134\47\134\47\47 $SIGNALS; signal_handler " ARGV[i] "; signal_handler__register\47 " ARGV[i] }' $SIGNALS
+);}"
+
+
+unset -v \
+	conky_pid \
+	monitor_pid \
+	xdotool_pid
+cd ~/.config/conky || exit 1
+
+monitor() {
+	get_cmpstr() {
+		./conky-genconf | md5sum
+	}
+	cmpstr=$(get_cmpstr)
+	while :; do
+		last_cmpstr=$cmpstr
+		sleep "$MONITOR_INTERVAL"
+		cmpstr=$(get_cmpstr)
+		[ ":$cmpstr" = ":$last_cmpstr" ] || kill -HUP $$
+	done
+}
+start_processes() {
+	xdotool search --sync --class '^conky$' behave %1 mouse-click windowminimize &
+	xdotool_pid=$!
+	LC_ALL=C ./conky-genconf | conky -c- &
+	conky_pid=$!
+}
+kill_processes() {
+	set -- $(getsubprocs $$ | grep -xF -e "$xdotool_pid" -e "$conky_pid")
+	[ $# -ne 0 ] && {
+		kill "$@"
+		set -- $(printf %s\\n "$@" | grep -vxF "$conky_pid")
+		[ $# -ne 0 ] && wait "$@"
+	}
+	wait $conky_pid
+	set $?
+	unset -v conky_pid
+	return $1
+}
+
+signal_handler() {
+	[ "$1" = EXIT ] || signal_handler_executed=1
+	case $1 in
+	EXIT)
+		monitor_pid=$(getsubprocs $$ | grep -xF "$monitor_pid")
+		[ -n "$monitor_pid" ] && {
+			rkill TERM $monitor_pid
+			wait $monitor_pid
+		}
+		kill_processes
+		;;
+	HUP)
+		restart_processes=1
+		printf %s\\n "$0: restarting child processes" >&2
+		;;
+	*)
+		exit
+		;;
+	esac
+}
+signal_handler__register
+
+start_processes
+[ -z "$MONITOR_INTERVAL" ] || [ "$MONITOR_INTERVAL" = 0 ] || {
+	monitor &
+	monitor_pid=$!
+}
+while :; do
+	restart_processes=0
+	signal_handler_executed=0
+	wait $conky_pid
+	exit_code=$?
+	[ $signal_handler_executed -eq 0 ] && exit $exit_code
+	[ $restart_processes -ne 0 ] && {
+		if xwininfo -id "$(xdotool search --class '^conky$')" | grep -qF 'Map State: IsViewable'; then
+			conky_window_action=windowactivate
+		else
+			conky_window_action=windowminimize
+		fi
+		conky_window_state=$?
+		kill_processes
+		start_processes
+		xdotool search --sync --class '^conky$' "$conky_window_action"
+	}
+done

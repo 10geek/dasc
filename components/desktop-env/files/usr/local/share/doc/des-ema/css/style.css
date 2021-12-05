@@ -1,0 +1,63 @@
+/* Effective stylesheet produced by snapshot save */
+body { color: rgb(0, 0, 0); background-color: rgb(255, 255, 255); margin: 0px; padding: 0px; }
+body, p, td, li, ul, ol { font-family: Verdana,Helvetica,Arial,sans-serif; }
+h1, h2, h3, h4, h5, h6 { font-family: "Trebuchet MS",Geneva,Arial,Helvetica,SunSans-Regular,Verdana,sans-serif; margin: 0px; }
+h1 { color: rgb(51, 102, 153); font-size: 1.6em; }
+a:link { text-decoration: none; font-weight: bold; color: rgb(255, 140, 0); }
+a:visited { text-decoration: none; font-weight: bold; color: rgb(204, 153, 102); }
+a:hover, a:active { font-weight: bold; color: rgb(255, 69, 0); text-decoration: underline; }
+p { margin: 0px 0px 1.3em; padding: 0px; }
+blockquote { border-left: 4px solid rgb(102, 153, 204); padding: 0px 15px; margin: 25px 100px 25px 50px; color: rgb(105, 105, 105); text-align: left; font-size: 1.2em; line-height: 1.3em; font-family: "Trebuchet MS",Geneva,Arial,Helvetica,SunSans-Regular,Verdana,sans-serif; }
+pre { background-color: rgb(238, 238, 238); padding: 0.75em 1.5em; font-size: 1.2em; border: 1px solid rgb(221, 221, 221); }
+.form-item { margin-top: 1em; }
+.form-item label { color: rgb(51, 102, 153); }
+#primary-menu { border-collapse: separate; background-color: rgb(224, 237, 251); border-bottom: 3px solid rgb(102, 153, 204); }
+#primary-menu tr { background: transparent url("header-a.jpg") repeat scroll left bottom; }
+td#home { background: transparent url("logo-background.jpg") repeat scroll left top; }
+td#home a:link img, td#home a:visited img { background: transparent url("logo-active.jpg") repeat scroll 0% 0%; width: 144px; height: 63px; }
+td#home a:hover img { background: transparent url("urn:not-loaded:http://www.nautilus-actions.org/themes/pushbutton/logo-hover.jpg") repeat scroll 0% 0%; width: 144px; height: 63px; }
+.primary-links, .primary-links a:link, .primary-links a:visited { color: rgb(51, 102, 153); }
+#primary-menu .primary-links { background: transparent url("header-b.jpg") no-repeat scroll left top; font-size: 0.79em; }
+#secondary-menu { border-collapse: separate; background-color: rgb(51, 102, 153); border-bottom: 3px solid rgb(102, 153, 204); }
+.secondary-links, .secondary-links a:link, .secondary-links a:visited { color: rgb(228, 233, 235); }
+.secondary-links a:hover { color: rgb(255, 255, 255); text-decoration: underline; }
+#secondary-menu .secondary-links { font-size: 0.85em; }
+ul.links li { border-left: 1px solid rgb(255, 140, 0); }
+#navlist li.first, #subnavlist li.first, ul.links li.first { border: medium none; }
+#content { background-color: rgb(255, 255, 255); }
+#search .form-text, #search .form-submit { border: 1px solid rgb(51, 102, 153); font-size: 0.85em; margin: 0.2em; }
+#search .form-text { width: 9em; }
+#search .form-submit { height: 1.5em; }
+#site-info { background-color: rgb(189, 211, 234); background-image: url("header-c.png"); font-family: "Trebuchet MS",Geneva,Arial,Helvetica,SunSans-Regular,Verdana,sans-serif; }
+.site-name { font-size: 1.2em; }
+.site-name a:link, .site-name a:visited { color: rgb(255, 255, 255); }
+.site-name a:hover { color: rgb(255, 140, 0); text-decoration: none; }
+.site-slogan { font-size: 0.8em; font-weight: bold; }
+#main { padding: 30px 35px 50px; position: relative; }
+#mission, .node .content, .comment .content { line-height: 1.4; }
+.breadcrumb { margin-bottom: 0.5em; }
+#sidebar-left, #sidebar-right { font-size: 0.75em; width: 175px; padding: 25px 10px 75px; vertical-align: top; background: rgb(255, 250, 240) none repeat scroll 0% 0%; }
+#sidebar-left { border-right: 3px solid rgb(245, 245, 245); }
+#sidebar-right { border-left: 3px solid rgb(245, 245, 245); }
+#sidebar-left li, #sidebar-right li { font-size: 1em; }
+.node .content { text-align: left; font-size: 0.85em; line-height: 1.3; }
+#footer-message { padding: 15px 100px 30px; font-size: 0.85em; text-align: center; color: rgb(170, 170, 170); }
+table#footer-menu { border-top: 3px solid rgb(102, 153, 204); border-bottom: 3px solid rgb(102, 153, 204); background-color: rgb(51, 102, 153); color: rgb(228, 233, 235); }
+#footer-menu td { padding: 5px; font-size: 0.75em; }
+#footer-menu .primary-links, #footer-menu a:link, #footer-menu a:visited { color: rgb(228, 233, 235); }
+#footer-menu a:hover { color: rgb(255, 255, 255); text-decoration: underline; }
+#content .title, #content .title a { color: rgb(51, 102, 153); }
+.content h2 { color: rgb(85, 136, 187); font-size: 1.7em; }
+.content h3 { color: rgb(102, 153, 204); font-size: 1.5em; }
+.content h4 { color: rgb(136, 187, 238); font-size: 1.3em; }
+.submitted { color: rgb(153, 153, 153); font-size: 0.79em; }
+div.links { color: rgb(255, 140, 0); }
+.links a { font-weight: bold; }
+.block .title h3 { border-bottom: 2px solid rgb(102, 153, 204); color: rgb(51, 102, 153); font-size: 18px; font-weight: bold; padding: 10px 5px 10px 30px; margin-bottom: 0.25em; background: transparent url("icon-block.png") no-repeat scroll left center; }
+.block .content { padding: 5px; }
+.block { margin-bottom: 1.5em; }
+.node { margin: 0.5em 0px 2.5em; }
+.node .content, .comment .content { margin: 0.5em 0px; }
+.node .taxonomy { color: rgb(153, 153, 153); font-size: 0.83em; padding: 1.5em; }
+div.links { font-size: 0.75em; }
+.hide { display: none; }

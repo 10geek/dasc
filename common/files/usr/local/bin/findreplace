@@ -1,0 +1,199 @@
+#!/usr/bin/env sh
+#
+# findreplace - utility to search and replace text in files and directories
+#
+# Version: 1.0.0 (14/07/2021)
+#
+# Copyright (c) 2021 10geek
+#
+# Licensed under the MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+err() {
+	if [ $# -gt 1 ]; then
+		printf %s\\n "$program_name: $2" >&2
+	else
+		printf %s\\n "$program_name: $1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+err_usage() {
+    [ $# -ne 0 ] && err "$@"
+    set -- "$(usage | LC_ALL=C awk -- 'BEGIN { ARGC = 1; is_usage = 0 } {
+        if(!is_usage) {
+            sub(/^[\t\n\v\f\r ]+/, "")
+            if(tolower(substr($0, 1, 6)) == "usage:") {
+                $0 = substr($0, 7)
+                is_usage = 1
+            } else next
+        }
+        sub(/^[\t\n\v\f\r ]+/, ""); sub(/[\t\n\v\f\r ]+$/, "")
+        if($0 == "") {
+            if(is_usage == 2) exit
+            else next
+        }
+        if(is_usage == 2) {
+            if(tolower(substr($0, 1, 6)) == "usage:") {
+                $0 = substr($0, 7)
+                sub(/^[\t\n\v\f\r ]+/, "")
+            }
+            printf("%s", ARGV[1] ": ")
+        }
+        print "usage: " $0
+        is_usage = 2
+    } END { exit exit_code }' "$program_name")"
+    [ -n "$1" ] && err "$1"
+    err "try \`$program_name --help' for more information" >&2
+    exit 1
+}
+normalize_path() {
+	[ -n "$2" ] && [ ":$2" != :- ] && {
+		eval "$2=$(normalize_path "$1" -)"
+		return
+	}
+	LC_ALL=C awk -- 'BEGIN {
+		path = ARGV[2] "/"; if(ARGV[2] !~ /^\//) path = ARGV[1] "/" path
+		gsub(/\0/, "", path); gsub(/\/\/+/, "/", path); gsub(/\/(\.\/)+/, "/", path)
+		while(sub(/\/[^\/]+\/\.\.\//, "/", path)) { continue }
+		sub(/\/\.\.\//, "/", path)
+		if(path != "/") sub(/\/$/, "", path)
+		if(ARGV[3] != "") {
+			gsub(/\47/, "\47\134\47\47", path)
+			print "\47" path "\47"
+		} else print path
+	}' "$PWD" "$1" "$2"
+}
+
+usage() {
+	cat <<- EOF
+	Usage: $program_name [<options>] ... <string> <replacement> <path> ...
+
+	Searches for <string> and replaces it with <replacement> in the
+	specified files or directories. Files containing NULL bytes are ignored.
+
+	Options:
+	  -i             Case-insensitive search
+	  -v             Treat value of the <replacement> argument as name of the
+	                 environment variable containing the string to replace the
+	                 search string with. Name of the environment variable must
+	                 match the regular expression ^[A-Z_][A-Z0-9_]*\$.
+	  -t             Show replaced strings without making changes in the files
+	  -v, --version  Output version information and exit
+	  -h, --help     Display this help and exit
+	EOF
+}
+
+
+program_name=${0##*/}
+program_version=1.0.0
+is_case_insensitive=0
+replacement_is_var_name=0
+is_test=0
+
+case $1 in
+--help|-h) usage; exit 0;;
+--version|-v) printf %s\\n "$program_version"; exit 0;;
+*)
+	while getopts ivt OPT; do case $OPT in
+		i) is_case_insensitive=1;;
+		v) replacement_is_var_name=1;;
+		t) is_test=1;;
+		?) exit 1;;
+	esac; done
+	;;
+esac
+shift $((OPTIND - 1))
+OPTIND=1
+[ $# -ge 3 ] || err_usage 'invalid number of arguments'
+
+if [ $replacement_is_var_name -eq 1 ]; then
+	LC_ALL=C awk -- 'BEGIN { if(ARGV[1] !~ /^[A-Z_][A-Z0-9_]*$/) exit 1 }' "$2" ||
+		err 1 "incorrect environment variable name: \`$2'"
+	eval "REPLACEMENT=\$$2"
+	[ ":$2" = :REPLACEMENT ] || unset -v "$2"
+else
+	REPLACEMENT=$2
+fi
+PROGRAM_NAME=$program_name
+PATTERN=$1
+IS_CASE_INSENSITIVE=$is_case_insensitive
+IS_TEST=$is_test
+export \
+	PROGRAM_NAME \
+	PATTERN \
+	REPLACEMENT \
+	IS_CASE_INSENSITIVE \
+	IS_TEST || exit 1
+shift 2
+
+eval "set -- $(
+	for arg in "$@"; do
+		[ -z "$arg" ] && {
+			printf %s\\n '; false'
+			err 'argument <path> can'\''t be an empty string'
+			break
+		}
+		normalize_path "$arg" - || { printf %s\\n '; false'; break; }
+	done | tr \\n ' '
+)" || exit 1
+
+find "$@" -type f -exec sh -c '
+	interrupt() { kill -INT "$PPID"; exit; }
+	[ $(tr -dc \\0 < "$0" | wc -c) -eq 0 ] || {
+		printf %s\\n "$PROGRAM_NAME: file \`$0'\'' contains NULL bytes, skipping" >&2
+		exit
+	}
+	{ trailing_newline=$(tail -c1 "$0" | wc -l) && [ -n "$trailing_newline" ]; } || interrupt
+	LC_ALL=C awk -- '\''BEGIN {
+		ARGC = 1; ORS = ""
+		pattern = ENVIRON["PATTERN"]
+		replacement = ENVIRON["REPLACEMENT"]
+		is_case_insensitive = ENVIRON["IS_CASE_INSENSITIVE"] + 0
+		is_test = ENVIRON["IS_TEST"] + 0
+		trailing_newline = ARGV[2] + 0
+		if(is_case_insensitive) pattern = tolower(pattern)
+		pattern_len = length(pattern)
+		has_replacements = 0
+		while((retval = getline < ARGV[1]) > 0) {
+			l++
+			line_has_replacements = 0
+			while(pos = (is_case_insensitive ? index(tolower($0), pattern) : index($0, pattern))) {
+				has_replacements = line_has_replacements = 1
+				if(pos != 1) ln[l] = ln[l] substr($0, 1, pos - 1)
+				ln[l] = ln[l] replacement
+				$0 = substr($0, pos + pattern_len)
+			}
+			ln[l] = ln[l] $0
+			if(is_test && line_has_replacements)
+				print ARGV[1] ":" l ":" ln[l] "\n"
+		}
+		close(ARGV[1])
+		if(retval < 0) exit 1
+		if(!has_replacements || is_test) exit 0
+		for(i = 1; i <= l; i++) {
+			if(i != 1) print "\n" > ARGV[1]
+			print ln[i] > ARGV[1]
+		}
+		if(trailing_newline) print "\n" > ARGV[1]
+		close(ARGV[1])
+	}'\'' "$0" "$trailing_newline" || interrupt
+' {} \; || exit 1

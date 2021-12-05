@@ -1,0 +1,3 @@
+audacious manual for(audacious-plugins)
+ocl-icd-libopencl1 auto for_manual(audacious) for(libavutil56)
+timgm6mb-soundfont auto for_manual(audacious) for(libfluidsynth2)

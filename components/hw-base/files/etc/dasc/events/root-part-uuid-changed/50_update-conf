@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+! [ -f /etc/fstab ] || {
+	current_uuid=$(findmnt -fnoUUID /) &&
+	LC_ALL=C awk -- 'BEGIN { ARGC = 2 } {
+		if($0 !~ /^[\t ]*#/ && $2 == "/")
+			$1 = "/dev/disk/by-uuid/" ARGV[2]
+		print $0
+	}' /etc/fstab "$current_uuid" > /etc/fstab.new &&
+	mv -f /etc/fstab.new /etc/fstab
+}

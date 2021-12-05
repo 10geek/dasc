@@ -1,0 +1,77 @@
+[global_config]
+  title_transmit_fg_color = "#dfdfdf"
+  title_transmit_bg_color = "#454649"
+  title_receive_fg_color = "#dfdfdf"
+  title_receive_bg_color = "#454649"
+  title_inactive_fg_color = "#888888"
+  title_inactive_bg_color = "#353638"
+  inactive_color_offset = 1.0
+  enabled_plugins = ,
+  suppress_multiple_term_dialog = True
+  title_use_system_font = False
+  title_font = Sans Bold 8
+  case_sensitive = False
+[keybindings]
+  zoom_in = <Primary>equal
+  cycle_next = ""
+  cycle_prev = ""
+  go_next = ""
+  go_prev = ""
+  rotate_cw = ""
+  rotate_ccw = ""
+  split_horiz = <Primary>question
+  split_vert = <Primary><Alt>slash
+  close_term = <Primary><Shift>w
+  toggle_scrollbar = ""
+  line_up = <Shift>Up
+  line_down = <Shift>Down
+  resize_up = ""
+  resize_down = ""
+  resize_left = ""
+  resize_right = ""
+  move_tab_right = <Primary><Shift>Right
+  move_tab_left = <Primary><Shift>Left
+  toggle_zoom = ""
+  scaled_zoom = ""
+  next_tab = <Shift>Right
+  prev_tab = <Shift>Left
+  full_screen = <Alt>Return
+  reset_clear = <Primary><Shift>k
+  hide_window = ""
+  group_all = ""
+  ungroup_all = ""
+  group_tab = ""
+  ungroup_tab = ""
+  new_window = <Primary><Shift>n
+  new_terminator = ""
+  insert_number = ""
+  insert_padded = ""
+  edit_window_title = ""
+  edit_tab_title = ""
+  edit_terminal_title = ""
+  layout_launcher = ""
+  help = ""
+[profiles]
+  [[default]]
+    urgent_bell = True
+    background_color = "#303030"
+    background_darkness = 0.8
+    background_type = transparent
+    cursor_blink = False
+    cursor_color = "#dadada"
+    font = Monospace 9
+    foreground_color = "#dadada"
+    scrollback_lines = 1000
+    palette = "#303030:#f54141:#72b872:#b89672:#7272b8:#b872b7:#72b7b8:#dadada:#989898:#fa6e6e:#acf9ac:#f8f9ac:#acacf9:#f9acf8:#acf8f9:#ffffff"
+    word_chars = "-,./?%&#:_~"
+    use_system_font = False
+    bold_is_bright = True
+[layouts]
+  [[default]]
+    [[[window0]]]
+      type = Window
+      parent = ""
+    [[[child1]]]
+      type = Terminal
+      parent = window0
+[plugins]

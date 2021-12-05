@@ -1,0 +1,2 @@
+/* Effective stylesheet produced by snapshot save */
+.project-release .node-form fieldset::after { content: "."; display: block; height: 0px; clear: both; visibility: hidden; }

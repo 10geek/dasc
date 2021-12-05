@@ -1,0 +1,4 @@
+name=Hardware / ModemManager
+name[ru]=Оборудование / ModemManager
+description=System for configuring GSM/CDMA/UMTS/EVDO/LTE modems
+description[ru]=Система для настройки GSM/CDMA/UMTS/EVDO/LTE-модемов

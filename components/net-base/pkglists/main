@@ -1,0 +1,25 @@
+bind9-dnsutils manual
+bridge-utils manual
+curl manual
+ethtool manual
+iproute2 manual for_manual(isc-dhcp-client)
+iptables manual
+iptraf-ng manual
+iputils-ping manual
+iputils-tracepath manual
+isc-dhcp-client manual
+iw manual
+msmtp manual
+netcat-openbsd manual
+nftables manual for_manual(iptables) for(iptables)
+nload manual
+sipcalc manual
+telnet manual
+traceroute manual for_manual(iputils-tracepath) for(iputils-tracepath)
+whois manual
+bind9-host auto for_manual(bind9-dnsutils) for(bind9-dnsutils)
+crda auto for_manual(iw) for(wireless-regdb)
+isc-dhcp-common auto for_manual(isc-dhcp-client) for(isc-dhcp-client)
+krb5-locales auto for_manual(bind9-dnsutils curl msmtp) for(libkrb5-3)
+libatm1 auto for_manual(isc-dhcp-client iproute2) for(iproute2)
+wireless-regdb auto for_manual(iw) for(iw)

@@ -1,0 +1,340 @@
+#!/usr/bin/env sh
+#
+# mailhandler - a sendmail wrapper and mail queue manager used for advanced
+# mail processing that can be configured via shell scripting.
+#
+# Version: 1.0.1 (14/10/2021)
+#
+# Copyright (c) 2020 10geek
+#
+# Licensed under the MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+GLOBAL__PROGRAM_NAME=${0##*/}
+GLOBAL__PROGRAM_VERSION=1.0.1
+GLOBAL__SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
+
+gets() { IFS= read -r "$1"; }
+puts() { printf %s\\n "$1"; }
+putsn() { printf %s "$1"; }
+putv() { eval 'printf %s\\n "$'"$1"'"'; }
+putvn() { eval 'printf %s "$'"$1"'"'; }
+expr "$(command -v printf)" : / > /dev/null && {
+	puts() {
+		cat <<- EOF
+		$1
+		EOF
+	}
+	putsn() {
+		LC_ALL=C awk 'BEGIN { ORS = ""; if((getline) <= 0) exit 1; print $0 } { print "\n"; print $0 }' <<- EOF
+		$1
+		EOF
+	}
+	putv() {
+		eval 'cat <<- EOF
+		$'"$1"'
+		EOF
+		'
+	}
+	putvn() {
+		eval 'LC_ALL=C awk '\''BEGIN { ORS = ""; if((getline) <= 0) exit 1; print $0 } { print "\n"; print $0 }'\'' <<- EOF
+		$'"$1"'
+		EOF
+		'
+	}
+}
+err() {
+	putsn "$GLOBAL__PROGRAM_NAME: " >&2
+	if [ $# -gt 1 ]; then
+		puts "$2" >&2
+	else
+		puts "$1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+checkutil() {
+	unset -v CHECKUTIL__NOT_FOUND_UTILS
+	if [ ":$1" = :-s ]; then
+		CHECKUTIL__SILENT=1
+		shift
+	else
+		CHECKUTIL__SILENT=0
+	fi
+	[ ":$1" = :-- ] && shift
+	set -- $*
+	while [ $# -ne 0 ]; do
+		{
+			CHECKUTIL__UTIL_PATH=$(command -v -- "$1") &&
+			[ -n "$CHECKUTIL__UTIL_PATH" ]
+		} ||
+			CHECKUTIL__NOT_FOUND_UTILS=$CHECKUTIL__NOT_FOUND_UTILS' '$1
+		shift
+	done
+	[ -z "$CHECKUTIL__NOT_FOUND_UTILS" ] || {
+		CHECKUTIL__NOT_FOUND_UTILS=${CHECKUTIL__NOT_FOUND_UTILS# }
+		[ $CHECKUTIL__SILENT -eq 0 ] &&
+			err "\`$(putv CHECKUTIL__NOT_FOUND_UTILS | sed 's/ /'\'', `/g; s/\(.*\), /\1 and /')' is not found in system, PATH=$PATH"
+		return 1
+	}
+}
+get_shell_pid() {
+	GET_SHELL_PID__PID=$(sh -c 'ps -Ao ppid,pid | LC_ALL=C awk -- '\''BEGIN { ARGC = 1 } $2 == ARGV[1] { print $1; exit }'\'' "$PPID"' && exit 0) &&
+	[ -n "$GET_SHELL_PID__PID" ]
+}
+getsubprocs() {
+	ps -Ao ppid,pid | LC_ALL=C awk -- 'BEGIN {
+		for(i = 1; i < ARGC; i++) ppids[ARGV[i]] = ""
+		ARGC = 1
+	}
+	$1 in ppids { print $2 }' "$@"
+}
+rkill() {
+	[ $# -lt 2 ] && return 1
+	KILLSUBPROCS__SIGNALS=$1; shift
+	kill -STOP "$@" > /dev/null 2>&1
+	rkill "$KILLSUBPROCS__SIGNALS" $(getsubprocs "$@")
+	eval "$(ps -Ao pid,comm | LC_ALL=C awk -- 'BEGIN {
+		argc = ARGC; ARGC = 1
+		tmp_count = split(ARGV[1], tmp)
+		default_signal = tmp[1]
+		for(i = 2; i <= tmp_count; i += 2) signals_by_comm[tmp[i]] = toupper(tmp[i + 1])
+	} { for(i = 2; i < argc; i++) {
+		if($1 != ARGV[i]) { continue }
+		if($2 in signals_by_comm) signals_by_pid[ARGV[i]] = signals_by_comm[$2]
+		break
+	} } END {
+		for(i = 2; i < argc; i++) {
+			if(ARGV[i] in signals_by_pid) signal = signals_by_pid[ARGV[i]]
+			else signal = default_signal
+			if(signal == "!") { continue }
+			if(!(signal in pids_by_signal)) pids_by_signal[signal] = ""
+			pids_by_signal[signal] = pids_by_signal[signal] " " ARGV[i]
+		}
+		for(signal in pids_by_signal)
+			print "kill -" signal pids_by_signal[signal] " > /dev/null 2>&1"
+	}' "$KILLSUBPROCS__SIGNALS" "$@")"
+	kill -CONT "$@" > /dev/null 2>&1
+}
+waitpid() {
+	while :; do
+		wait "$1" 2>/dev/null
+		WAITPID__RETVAL=$?
+		sh -c 'trap '\'\'' '"$GLOBAL__SIGNALS"'
+		ps -Ao ppid,pid | LC_ALL=C awk -- '\''
+			BEGIN { ARGC = 1; exit_code = 1 }
+			$2 == ARGV[2] { if($1 == ARGV[1]) exit_code = 0; exit }
+			END { exit exit_code }
+		'\'' "$PPID" "$0"' "$1" || break
+	done
+	wait "$1" 2>/dev/null
+	WAITPID__LAST_RETVAL=$?
+	[ $WAITPID__LAST_RETVAL -ne 127 ] && return $WAITPID__LAST_RETVAL
+	return $WAITPID__RETVAL
+}
+eval "signal_handler__register() { trap 'EXIT_CODE=\$?; trap '\\'\\'' \$GLOBAL__SIGNALS; signal_handler EXIT' EXIT;$(
+	LC_ALL=C awk -- 'BEGIN { for(i = 1; i < ARGC; i++) print "trap \47trap \47\134\47\134\47\47 $GLOBAL__SIGNALS; signal_handler " ARGV[i] "; signal_handler__register\47 " ARGV[i] }' $GLOBAL__SIGNALS
+);}"
+
+loadrc() {
+	set -- "$LC_ALL"; LC_ALL=C
+	for loadrc__file in \
+		/usr/lib/mailhandler/* \
+		/usr/local/lib/mailhandler/* \
+		/etc/mailhandlerrc \
+		~/.mailhandlerrc
+	do
+		LC_ALL=$1
+		[ -f "$loadrc__file" ] || continue
+		. "$loadrc__file" || {
+			err "\`$loadrc__file' exited with code $?"
+			return 1
+		}
+	done
+	return 0
+}
+process_mail() { :; }
+process_log() { cat > /dev/null; }
+
+
+{ USER_ID=$(id -u) && [ -n "$USER_ID" ]; } ||
+	err 1 'unable to get user ID'
+{ USER=$(id -un) && [ -n "$USER" ]; } ||
+	err 1 'unable to get user name'
+HOSTNAME=$(uname -n)
+[ -n "$MAIL" ] || MAIL=/var/mail/$USER
+[ -n "$HOME" ] || {
+	HOME=$(awk -F: -- 'BEGIN { ARGC = 1 } $3 == ARGV[1] { print $6 }' "$USER_ID" < /etc/passwd) &&
+	[ -n "$HOME" ]
+} ||
+	err 1 'unable to get path to the home directory'
+
+if [ ":$USER_ID" = :0 ]; then
+	DIRS=$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+else
+	DIRS=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+fi
+PATH_NEW=
+DELIMITER=
+OLDIFS=$IFS
+IFS=:
+for DIR in $DIRS; do
+	[ -d "$DIR" ] || continue
+	PATH_NEW=$PATH_NEW$DELIMITER$DIR
+	DELIMITER=:
+done
+IFS=$OLDIFS
+PATH=$PATH_NEW
+export PATH
+unset -v PATH_NEW DELIMITER OLDIFS DIR DIRS
+
+WORKDIR=$HOME/.mailhandler
+PIDFILE=$WORKDIR/mailhandler.pid
+LOGFILE=$WORKDIR/mailhandler.log
+MAIL_KEEP_DAYS=0
+
+{
+	loadrc &&
+	checkutil flock &&
+	mkdir -pm 750 -- "$WORKDIR" &&
+	mkdir -p -- "$WORKDIR/spool"
+} || exit 1
+
+
+case $GLOBAL__PROGRAM_NAME in
+mailhandler)
+	[ $# -gt 1 ] &&
+		err 1 'invalid number of arguments'
+	[ $# -eq 1 ] && case $1 in
+	--help|-h)
+		cat <<- END
+		Usage: $GLOBAL__PROGRAM_NAME [-d|-k|-v|--version|-h|--help]
+
+		Options:
+		  -d             Start daemon (detach from the parent process).
+		  -k             Kill an already running daemon of the calling user (equivalent
+		                 to sending a SIGTERM).
+		  -v, --version  Output version information and exit
+		  -h, --help     Display this help and exit
+		END
+		exit 0
+		;;
+	--version|-v)
+		putv GLOBAL__PROGRAM_VERSION
+		exit 0
+		;;
+	-d)
+		trap '' HUP
+		"$0" < /dev/null > /dev/null 2>&1 &
+		exit
+		;;
+	-k)
+		PID=$(tr -dc 0-9 < "$PIDFILE") 2>/dev/null
+		{ [ -n "$PID" ] && kill -TERM "$PID" 2>/dev/null; } ||
+			err 0 'the daemon is not currently running'
+		exit
+		;;
+	*)
+		err 1 "invalid argument \`$1'"
+		;;
+	esac
+	{
+		flock -n 9 || {
+			[ $? -eq 1 ] && exit 0
+			err 1 "error getting lock \`$WORKDIR/lock-mailhandler'"
+		}
+		unset -v CHILD_PID
+		get_shell_pid ||
+			err 1 'unable to get process pid'
+		PID=$GET_SHELL_PID__PID
+		signal_handler() {
+			case $1 in
+			EXIT)
+				rm -f -- "$PIDFILE"
+				;;
+			*)
+				rkill TERM $CHILD_PID
+				;;
+			esac
+		}
+		signal_handler__register
+		putv PID > "$PIDFILE"
+		loadrc || exit 1
+		{ {
+			cd -- "$WORKDIR" || exit 1
+			while :; do
+				[ "$MAIL_KEEP_DAYS" -gt 0 ] &&
+					find spool -type f -mtime "+$MAIL_KEEP_DAYS" -exec rm -f -- {} \; -o \( -type d -path '*/*' ! -prune \)
+				find spool -type f -o \( -type d -path '*/*' ! -prune \) | {
+					while gets MAILFILE; do
+						if process_mail < /dev/null; then
+							rm -f -- "$MAILFILE" || exit 1
+						else
+							err "unable to process mail file \`$WORKDIR/$MAILFILE', process_mail() function returned code $?"
+							[ -d "$WORKDIR/spool" ] ||
+								err 1 "directory \`$WORKDIR/spool' does not exist"
+							sleep 1
+							loadrc
+						fi
+					done
+					true
+				} || exit 1
+				{
+					flock 8 ||
+						err 1 "error getting lock \`$WORKDIR/lock-spool'"
+					[ -n "$(find spool -type f -o \( -type d -path '*/*' ! -prune \) | head -n1)" ] || {
+						flock -u 9 ||
+							err 1 "error releasing lock \`$WORKDIR/lock-mailhandler'"
+						break
+					}
+				} 8>"$WORKDIR/lock-spool" || exit 1
+				loadrc
+			done
+		} 2>&1 | process_log; :; } &
+		CHILD_PID=$!
+		waitpid $CHILD_PID
+	} 9>"$WORKDIR/lock-mailhandler"
+	;;
+*)
+	EXEC_TIME=$(date +%s)
+	expr "$EXEC_TIME" : '[1-9][0-9]*$' > /dev/null ||
+		err 1 '`date'\'' utility is incompatible'
+	{
+		flock 9 ||
+			err 1 "error getting lock \`$WORKDIR/lock-spool'"
+		{
+			cat > "$WORKDIR/newmail" &&
+			{ [ -s "$WORKDIR/newmail" ] || err "mail is empty"; }
+		} || {
+			rm -f -- "$WORKDIR/newmail"
+			exit 1
+		}
+		SUFFIX=0
+		while [ -e "$WORKDIR/spool/$EXEC_TIME.$SUFFIX" ]; do
+			SUFFIX=$((SUFFIX + 1))
+		done
+		mv -f -- "$WORKDIR/newmail" "$WORKDIR/spool/$EXEC_TIME.$SUFFIX" || exit 1
+	} 9>"$WORKDIR/lock-spool" || exit 1
+	mailhandler -d
+	;;
+esac
+
+exit 0

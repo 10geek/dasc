@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<openbox_menu xmlns="http://openbox.org/"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://openbox.org/
+				file:///usr/share/openbox/menu.xsd">
+
+<menu id="root-menu" label="Openbox 3">
+	<item label="Terminal emulator">
+		<action name="Execute">
+			<execute>exo-open --launch TerminalEmulator</execute>
+		</action>
+	</item>
+	<!-- <menu id="applications-menu" label="Applications" execute="/usr/bin/obamenu"/> -->
+	<separator/>
+	<item label="Reload Openbox configuration">
+		<action name="Reconfigure"/>
+	</item>
+	<item label="Restart Openbox">
+		<action name="Restart"/>
+	</item>
+	<item label="Restart Compton">
+		<action name="Execute">
+			<execute>gseskillall compton TERM</execute>
+		</action>
+	</item>
+	<item label="Restart PCManFM">
+		<action name="Execute">
+			<execute>gseskillall pcmanfm KILL</execute>
+		</action>
+	</item>
+	<item label="Restart XFCE panel">
+		<action name="Execute">
+			<execute>gseskillall xfce4-panel</execute>
+		</action>
+	</item>
+	<separator/>
+	<item label="Logout menu">
+		<action name="Execute">
+			<command>gsesctl</command>
+		</action>
+	</item>
+	<item label="Logout">
+		<action name="Exit"/>
+	</item>
+</menu>
+
+</openbox_menu>

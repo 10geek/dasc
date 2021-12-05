@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Checking for POSIX utility `lp`
+#\............................................................................./
+old_ifs=$IFS; IFS=:
+is_util_exist=0
+for util_path in $PATH; do
+    [ ":$util_path" = ":$CONFDIR" ] && continue
+    [ -f "$util_path/lp" ] && [ -x "$util_path/lp" ] && {
+        is_util_exist=1
+        break
+    }
+done
+IFS=$old_ifs
+[ $is_util_exist -eq 0 ] && {
+    debcomp log -e "checking POSIX utilities failed: \`lp' is not found in the system"
+    exit 1
+}
+
+#/*****************************************************************************\
+# Generating files from macro files
+#\............................................................................./
+find "$PREPDIR" -type f -name '*.awm' -exec sh -c '{
+	case $0 in "$PREPDIR/etc/debcomp/userconf"/*) exit; esac
+	awkmacro "$0" > "${0%.*}" &&
+	rm -f "$0"
+} || kill -INT "$PPID"' {} \; || exit
+
+#/*****************************************************************************\
+# Changing permissions
+#\............................................................................./
+{
+	chown root:lp \
+		"$PREPDIR/etc/cups" \
+		"$PREPDIR/etc/cups/cupsd.conf" &&
+	chmod 640 "$PREPDIR/etc/cups/cupsd.conf"
+} || exit

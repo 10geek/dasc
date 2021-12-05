@@ -1,0 +1,1485 @@
+#!/usr/bin/env sh
+#
+# approf - utility for creating and managing virtual application profiles
+#
+# Version: 1.0.0 (05/11/2021)
+#
+# Copyright (c) 2021 10geek
+#
+# Licensed under the MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+err() {
+	if [ $# -gt 1 ]; then
+		printf %s\\n "$program_name: $2" >&2
+	else
+		printf %s\\n "$program_name: $1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+err_usage() {
+	[ $# -ne 0 ] && err "$@"
+	set -- "$(usage | LC_ALL=C awk -- 'BEGIN { ARGC = 1; is_usage = 0 } {
+		if(!is_usage) {
+			sub(/^[\t\n\v\f\r ]+/, "")
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				is_usage = 1
+			} else next
+		}
+		sub(/^[\t\n\v\f\r ]+/, ""); sub(/[\t\n\v\f\r ]+$/, "")
+		if($0 == "") {
+			if(is_usage == 2) exit
+			else next
+		}
+		if(is_usage == 2) {
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				sub(/^[\t\n\v\f\r ]+/, "")
+			}
+			printf("%s", ARGV[1] ": ")
+		}
+		print "usage: " $0
+		is_usage = 2
+	} END { exit exit_code }' "$program_name")"
+	[ -n "$1" ] && err "$1"
+	err "try \`$program_name --help' for more information" >&2
+		exit 1
+}
+# Usage: l10n_msg default_message [lang message] ...
+l10n_msg() {
+	l10n_msg__msg=$1; shift
+	while [ $# -gt 1 ]; do
+		case $1 in
+		$lang)
+			l10n_msg__msg=$2
+			break
+			;;
+		*_*) ;;
+		*)
+			case $lang in
+			${1}_*) l10n_msg__msg=$2;;
+			esac
+			;;
+		esac
+		shift 2
+	done
+	printf %s\\n "$l10n_msg__msg"
+}
+checkutil() {
+	unset -v checkutil__not_found_utils checkutil__util
+	checkutil__silent=0
+	checkutil__any=0
+	while [ $# -ne 0 ]; do
+		checkutil___is_arg_opt=0
+		case $1 in --)
+			shift; break; esac
+		case $1 in -s*|-*s*|-*s)
+			checkutil___is_arg_opt=1; checkutil__silent=1; esac
+		case $1 in -a*|-*a*|-*a)
+			checkutil___is_arg_opt=1; checkutil__any=1; esac
+		case $checkutil___is_arg_opt in 0)
+			break; esac
+		shift
+	done
+	set -- $*
+	while [ $# -ne 0 ]; do
+		if ! checkutil__util_path=$(command -v -- "$1") || [ -z "$checkutil__util_path" ]; then
+			checkutil__not_found_utils=$checkutil__not_found_utils' '$1
+		else case $checkutil__any in 1)
+			checkutil__util=$1
+			return 0
+		esac; fi
+		shift
+	done
+	[ -z "$checkutil__not_found_utils" ] || {
+		checkutil__not_found_utils=${checkutil__not_found_utils# }
+		[ $checkutil__silent -eq 0 ] &&
+			err "\`$(printf %s\\n "$checkutil__not_found_utils" | sed 's/ /'\'', `/g; s/\(.*\), /\1 and /')' is not found in the system; PATH=$PATH"
+		return 1
+	}
+}
+isdirempty() {
+	[ -d "$1" ] || {
+		err "isdirempty(): directory \`$1\" does not exist"
+		return 2
+	}
+	{ isdirempty__buf=$(
+		cd "$1" 2>&3 &&
+		find . -path './*' -prune -exec sh -c 'echo .; kill -INT "$PPID"' \; 2>&3
+	); } 3>&2 2>/dev/null
+	case $? in
+	0) [ -z "$isdirempty__buf" ] && return 0;;
+	*) [ -z "$isdirempty__buf" ] && return 2;;
+	esac
+	return 1
+}
+normalize_path() {
+	[ -n "$2" ] && [ ":$2" != :- ] && {
+		eval "$2=$(normalize_path "$1" -)"
+		return
+	}
+	LC_ALL=C awk -- 'BEGIN {
+		path = ARGV[2] "/"; if(ARGV[2] !~ /^\//) path = ARGV[1] "/" path
+		gsub(/\0/, "", path); gsub(/\/\/+/, "/", path); gsub(/\/(\.\/)+/, "/", path)
+		while(sub(/\/[^\/]+\/\.\.\//, "/", path)) { continue }
+		sub(/\/\.\.\//, "/", path)
+		if(path != "/") sub(/\/$/, "", path)
+		if(ARGV[3] != "") {
+			gsub(/\47/, "\47\134\47\47", path)
+			print "\47" path "\47"
+		} else print path
+	}' "$PWD" "$1" "$2"
+}
+
+
+SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
+eval "signal_handler__register() { trap 'EXIT_CODE=\$?; trap '\\'\\'' \$SIGNALS; signal_handler EXIT' EXIT;$(
+	LC_ALL=C awk -- 'BEGIN { for(i = 1; i < ARGC; i++) print "trap \47trap \47\134\47\134\47\47 $SIGNALS; signal_handler " ARGV[i] "; signal_handler__register\47 " ARGV[i] }' $SIGNALS
+);}"
+
+lang=$(locale | LC_ALL=C awk '{
+	if(!sub(/^[\t ]*LC_MESSAGES=/, "")) next
+	if(sub(/^"/, "")) {
+		if(!sub(/"$/, "")) next
+	} else if(sub(/^\47/, "")) {
+		if(!sub(/\47$/, "")) next
+	}
+	sub(/@.*/, "")
+	if(tolower($0) !~ /^[A-Za-z]+(_[A-Za-z]+)?\.utf-?8$/) next
+	sub(/\..*/, "")
+	print $0
+	exit
+}')
+
+
+program_name=${0##*/}
+program_icon_name=approf
+program_version=1.0.0
+case $lang in
+ru|ru_*)
+	program_full_name='Менеджер профилей приложений'
+	;;
+*)
+	program_full_name='Application Profile Manager'
+	;;
+esac
+
+
+usage() {
+	cat <<- EOF
+	Usage:
+	$program_name [<options>] ... (<app_name> | <app_path>) [<app_arg>] ...
+	$program_name -c -p <profile> <app_name> [<option_name>=<option_value>]
+	$program_name -r [-p <profile>] <app_name>
+
+	Starts the application with the profile specified with the -p option, or
+	displays the profile selection window if the -p option was not passed.
+
+	Options:
+	  -p <profile>   Name of the application profile
+	  -a <app_name>  Use the profile of the application specified in the option
+	                 value instead of the one passed in the first argument
+	  -c             Create <profile> for application specified in the
+	                 <app_name> argument. Arguments starting from the 2nd are
+	                 interpreted as profile configuration options and their values.
+	                 Available options:
+	                   copy_profile_conf_from=<app_name>/<profile>
+	                     Copy ~/.$program_name-profile from the specified profile
+	                   limit_memory=<amount>(K | M | G)
+	                     Limit the memory available for the process
+	                   run_in_sandbox=(0 | 1)
+	                     Start the process in the sandbox with bubblewrap
+	                   restore_initial_profile_state=(1 | 0)
+	                     Rollback profile changes after the process is terminated
+	  -r             Removes the specified application profile, or all application
+	                 profiles if the -p option is not passed
+	  -v, --version  Output version information and exit
+	  -h, --help     Display this help and exit
+	EOF
+}
+
+unset -v \
+	app_name \
+	profile_name
+action=run
+tab=$(printf \\t)
+lf=$(printf \\n.); lf=${lf%.}
+
+case $1 in
+--help|-h) usage; exit 0;;
+--version|-v) printf %s\\n "$program_version"; exit 0;;
+*)
+	while getopts p:a:cr OPT; do case $OPT in
+		p)
+			case $OPTARG in
+			''|.|..|*/*|*"$lf"*)
+				err 1 "\`$OPTARG' is invalid value of the -p option"
+			esac
+			profile_name=$OPTARG
+			;;
+		a)
+			case $OPTARG in
+			''|.|..|*/*|*"$lf"*)
+				err 1 "\`$OPTARG' is invalid value of the -a option"
+			esac
+			app_name=$OPTARG
+			;;
+		c) action=create_profile;;
+		r) action=remove_profile;;
+		?) exit 1;;
+	esac; done
+	;;
+esac
+shift $((OPTIND - 1))
+OPTIND=1
+
+case $action in
+run) [ $# -ge 1 ];;
+create_profile)
+	[ -n "${profile_name+:}" ] ||
+		err_usage '-p <profile> is not specified'
+	[ $# -ge 1 ]
+	;;
+remove_profile) [ $# -eq 1 ];;
+esac ||
+	err_usage 'invalid number of arguments'
+
+case ${app_name+1} in
+'')
+	case $action in
+	run) app_name=${1##*/};;
+	*) app_name=$1;;
+	esac
+	case $app_name in
+	''|.|..|*/*|*"$lf"*) false;;
+	*) true;;
+	esac ||
+		err 1 "\`$1' is invalid value of the <app_name> of <app_path> argument"
+esac
+
+case $action in
+run)
+	case $1 in
+	*/*)
+		app_path=$1
+		;;
+	*)
+		unset -v app_path
+		old_ifs=$IFS; IFS=:
+		for dir in $PATH; do
+			[ -f "$dir/$1" ] && [ -x "$dir/$1" ] && {
+				app_path=$dir/$1
+				break
+			}
+		done
+		IFS=$old_ifs
+		[ -z "$app_path" ] &&
+			err 1 "program \`$1' is not found in the system; PATH=$PATH"
+		;;
+	esac
+esac
+shift
+normalize_path "$app_path" app_path || exit 1
+
+{ USER_ID=$(id -u) && [ -n "$USER_ID" ]; } ||
+	err 1 'unable to get user ID'
+{ USER=$(id -un) && [ -n "$USER" ]; } ||
+	err 1 'unable to get user name'
+[ -n "$HOME" ] || {
+	HOME=$(awk -F: -- 'BEGIN { if(ARGV[1] == "") exit 1; ARGC = 1 } $3 == ARGV[1] { print $6 }' "$USER_ID" < /etc/passwd) &&
+	[ -n "$HOME" ]
+} ||
+	err 1 'unable to get path to the home directory'
+HOME=${HOME%/}
+{
+	case $HOME in
+	/*) true;;
+	*) false;;
+	esac &&
+	case $HOME in
+	*/) false;;
+	*) true;;
+	esac
+} ||
+	err 1 "\`$HOME' is invalid home directory path"
+profiles_path=$HOME/.$program_name
+
+case $action in
+run)
+	checkutil flock || exit 1
+
+	case ${profile_name+1} in
+	'')
+		. /usr/local/share/shell/jsio.sh || exit 1
+
+		gui_dialog_err() {
+			[ $# -lt 2 ] && set -- '' "$1"
+			jsio '
+				let dialog = new Gtk.MessageDialog({
+					'"$([ -n "$1" ] && printf %s\\n "transient_for: $1,")"'
+					icon_name: ' "$program_icon_name" ',
+					message_type: Gtk.MessageType.ERROR,
+					buttons: Gtk.ButtonsType.CLOSE,
+					title: ' "$program_full_name — $(l10n_msg 'Error' ru 'Ошибка')" ',
+					text: ' "$2" '
+				});
+				dialog.run();
+				dialog.destroy();'
+		}
+		gui_liststore_profiles_update() {
+			jsio : = '
+				let profileName;
+				ui.liststore_profiles.clear();
+				while((profileName = jsio.read()) != "")
+					ui.liststore_profiles.insert_with_valuesv(-1, [0], [profileName.substring(2)]);
+				ui.treeview_profiles.set_cursor(Gtk.TreePath.new_first(), null, false);'
+			if [ -e "$profiles_path/$app_name" ]; then
+				(
+					cd "$profiles_path/$app_name" &&
+					find -L ./ ! -path ./ -prune -type d | tr \\n \\0 | jsio__write
+				) || exit 1
+			else
+				jsio__write ''
+			fi
+			jsio__read; jsio__read
+		}
+		gui_get_sel_profile() {
+			jsio sel_profile_name= '
+				let result = "";
+				let [selectedItem, model] = ui.treeview_profiles.get_selection().get_selected_rows();
+				if(selectedItem.length) {
+					let [ok, iter] = model.get_iter(selectedItem[0]);
+					if(ok) result = model.get_value(iter, 0);
+				}
+				result;'
+			case $sel_profile_name in
+			'')
+				case $1 in
+				1) ;;
+				*)
+					gui_dialog_err ui.win_sel_profile "$(l10n_msg 'Profile is not selected' ru 'Не выбран профиль')"
+				esac
+				return 1
+				;;
+			*)
+				return 0
+				;;
+			esac
+		}
+		gui_win_create_profile_reset() {
+			jsio '
+				ui.win_create_profile_entry_profile_name.set_text("");
+				ui.ckbtn_copy_profile_conf.set_active(false);
+				ui.entry_copy_profile_conf_from.set_text("");
+				ui.container_profile_conf.show();
+				ui.ckbtn_limit_memory.set_active(false);
+				ui.spinbtn_memory_limit.set_value(100);
+				ui.combo_memory_limit_units.set_active(1);
+				ui.ckbtn_run_in_sandbox.set_active(false);
+				ui.ckbtn_restore_initial_profile_state.set_active(false);'
+		}
+
+		signal_handler() {
+			case $1 in
+			EXIT)
+				set -- 0
+				jsio__exit || set -- 1
+				[ $EXIT_CODE -eq 0 ] && EXIT_CODE=$1
+				exit $EXIT_CODE
+				;;
+			*) exit;;
+			esac
+		}
+		signal_handler__register
+
+		checkutil -a gjs cjs || exit 1
+		jsio__init "$checkutil__util" 6 7 || exit 1
+
+		jsio 'imports.gi.versions.Gtk = "3.0"'
+		jsio 'this.Gtk = imports.gi.Gtk'
+		jsio 'this.Gdk = imports.gi.Gdk'
+		jsio 'this.GLib = imports.gi.GLib'
+
+		jsio 'Gtk.init(null)'
+		jsio 'this.ui = {}'
+
+		jsio : = 'this.builder = Gtk.Builder.new_from_string(jsio.read(), -1)'
+		jsio__write <<- EOF
+		<?xml version="1.0" encoding="UTF-8"?>
+		<!-- Generated with glade 3.22.2 -->
+		<interface>
+		  <requires lib="gtk+" version="3.0"/>
+		  <object class="GtkAdjustment" id="adjustment_spinbtn_memory_limit">
+		    <property name="lower">1</property>
+		    <property name="upper">4294967296</property>
+		    <property name="value">100</property>
+		    <property name="step_increment">1</property>
+		    <property name="page_increment">10</property>
+		  </object>
+		  <object class="GtkImage" id="img_btn_create_profile">
+		    <property name="visible">True</property>
+		    <property name="can_focus">False</property>
+		    <property name="stock">gtk-add</property>
+		  </object>
+		  <object class="GtkImage" id="img_btn_edit_profile">
+		    <property name="visible">True</property>
+		    <property name="can_focus">False</property>
+		    <property name="stock">gtk-edit</property>
+		  </object>
+		  <object class="GtkImage" id="img_btn_open_profile">
+		    <property name="visible">True</property>
+		    <property name="can_focus">False</property>
+		    <property name="stock">gtk-directory</property>
+		  </object>
+		  <object class="GtkImage" id="img_btn_remove_profile">
+		    <property name="visible">True</property>
+		    <property name="can_focus">False</property>
+		    <property name="stock">gtk-remove</property>
+		  </object>
+		  <object class="GtkImage" id="img_btn_start">
+		    <property name="visible">True</property>
+		    <property name="can_focus">False</property>
+		    <property name="stock">gtk-execute</property>
+		  </object>
+		  <object class="GtkImage" id="img_btn_start_command_shell">
+		    <property name="visible">True</property>
+		    <property name="can_focus">False</property>
+		    <property name="icon_name">utilities-terminal</property>
+		  </object>
+		  <object class="GtkListStore" id="liststore_profiles">
+		    <columns>
+		      <!-- column-name profile_name -->
+		      <column type="gchararray"/>
+		    </columns>
+		  </object>
+		  <object class="GtkDialog" id="win_sel_profile">
+		    <property name="can_focus">False</property>
+		    <property name="border_width">10</property>
+		    <property name="title" translatable="yes">$(l10n_msg 'Choose profile' ru 'Выбор профиля') — $program_full_name</property>
+		    <property name="default_width">550</property>
+		    <property name="default_height">320</property>
+		    <property name="icon_name">$program_icon_name</property>
+		    <property name="type_hint">dialog</property>
+		    <child type="titlebar">
+		      <placeholder/>
+		    </child>
+		    <child internal-child="vbox">
+		      <object class="GtkBox">
+		        <property name="can_focus">False</property>
+		        <property name="orientation">vertical</property>
+		        <property name="spacing">5</property>
+		        <child internal-child="action_area">
+		          <object class="GtkButtonBox">
+		            <property name="can_focus">False</property>
+		            <property name="layout_style">end</property>
+		            <child>
+		              <object class="GtkButton" id="btn_close">
+		                <property name="label">gtk-close</property>
+		                <property name="visible">True</property>
+		                <property name="can_focus">True</property>
+		                <property name="receives_default">True</property>
+		                <property name="use_stock">True</property>
+		              </object>
+		              <packing>
+		                <property name="expand">True</property>
+		                <property name="fill">True</property>
+		                <property name="position">0</property>
+		              </packing>
+		            </child>
+		            <child>
+		              <object class="GtkButton" id="btn_start">
+		                <property name="label" translatable="yes">$(l10n_msg 'Start' ru 'Запустить')</property>
+		                <property name="visible">True</property>
+		                <property name="can_focus">True</property>
+		                <property name="receives_default">True</property>
+		                <property name="image">img_btn_start</property>
+		              </object>
+		              <packing>
+		                <property name="expand">True</property>
+		                <property name="fill">True</property>
+		                <property name="position">1</property>
+		              </packing>
+		            </child>
+		          </object>
+		          <packing>
+		            <property name="expand">False</property>
+		            <property name="fill">False</property>
+		            <property name="position">0</property>
+		          </packing>
+		        </child>
+		        <child>
+		          <object class="GtkBox">
+		            <property name="visible">True</property>
+		            <property name="can_focus">False</property>
+		            <property name="orientation">vertical</property>
+		            <property name="spacing">10</property>
+		            <child>
+		              <object class="GtkLabel" id="label_sel_profile_text">
+		                <property name="visible">True</property>
+		                <property name="can_focus">False</property>
+		                <property name="wrap">True</property>
+		                <property name="wrap_mode">word-char</property>
+		                <property name="xalign">0</property>
+		              </object>
+		              <packing>
+		                <property name="expand">False</property>
+		                <property name="fill">True</property>
+		                <property name="position">0</property>
+		              </packing>
+		            </child>
+		            <child>
+		              <object class="GtkBox">
+		                <property name="visible">True</property>
+		                <property name="can_focus">False</property>
+		                <property name="spacing">10</property>
+		                <child>
+		                  <object class="GtkButtonBox">
+		                    <property name="visible">True</property>
+		                    <property name="can_focus">False</property>
+		                    <property name="orientation">vertical</property>
+		                    <property name="spacing">5</property>
+		                    <property name="layout_style">start</property>
+		                    <child>
+		                      <object class="GtkButton" id="btn_create_profile">
+		                        <property name="label" translatable="yes">$(l10n_msg 'Create profile' ru 'Создать профиль')</property>
+		                        <property name="visible">True</property>
+		                        <property name="can_focus">True</property>
+		                        <property name="receives_default">True</property>
+		                        <property name="image">img_btn_create_profile</property>
+		                        <accelerator key="n" signal="clicked" modifiers="GDK_CONTROL_MASK"/>
+		                      </object>
+		                      <packing>
+		                        <property name="expand">False</property>
+		                        <property name="fill">True</property>
+		                        <property name="position">0</property>
+		                      </packing>
+		                    </child>
+		                    <child>
+		                      <object class="GtkButton" id="btn_edit_profile">
+		                        <property name="label" translatable="yes">$(l10n_msg 'Edit profile' ru 'Изменить профиль')</property>
+		                        <property name="visible">True</property>
+		                        <property name="can_focus">True</property>
+		                        <property name="receives_default">True</property>
+		                        <property name="image">img_btn_edit_profile</property>
+		                        <accelerator key="e" signal="clicked" modifiers="GDK_CONTROL_MASK"/>
+		                      </object>
+		                      <packing>
+		                        <property name="expand">False</property>
+		                        <property name="fill">True</property>
+		                        <property name="position">1</property>
+		                      </packing>
+		                    </child>
+		                    <child>
+		                      <object class="GtkButton" id="btn_open_profile">
+		                        <property name="label" translatable="yes">$(l10n_msg 'Open profile directory' ru 'Открыть каталог профиля')</property>
+		                        <property name="visible">True</property>
+		                        <property name="can_focus">True</property>
+		                        <property name="receives_default">True</property>
+		                        <property name="image">img_btn_open_profile</property>
+		                        <accelerator key="o" signal="clicked" modifiers="GDK_CONTROL_MASK"/>
+		                      </object>
+		                      <packing>
+		                        <property name="expand">False</property>
+		                        <property name="fill">True</property>
+		                        <property name="position">2</property>
+		                      </packing>
+		                    </child>
+		                    <child>
+		                      <object class="GtkButton" id="btn_start_command_shell">
+		                        <property name="label" translatable="yes">$(l10n_msg 'Start command shell' ru 'Запустить командную оболочку')</property>
+		                        <property name="visible">True</property>
+		                        <property name="can_focus">True</property>
+		                        <property name="receives_default">True</property>
+		                        <property name="image">img_btn_start_command_shell</property>
+		                        <accelerator key="t" signal="clicked" modifiers="GDK_CONTROL_MASK"/>
+		                      </object>
+		                      <packing>
+		                        <property name="expand">True</property>
+		                        <property name="fill">True</property>
+		                        <property name="position">3</property>
+		                      </packing>
+		                    </child>
+		                    <child>
+		                      <object class="GtkButton" id="btn_remove_profile">
+		                        <property name="label" translatable="yes">$(l10n_msg 'Remove profile' ru 'Удалить профиль')</property>
+		                        <property name="visible">True</property>
+		                        <property name="can_focus">True</property>
+		                        <property name="receives_default">True</property>
+		                        <property name="image">img_btn_remove_profile</property>
+		                        <accelerator key="Delete" signal="clicked"/>
+		                      </object>
+		                      <packing>
+		                        <property name="expand">False</property>
+		                        <property name="fill">True</property>
+		                        <property name="position">4</property>
+		                      </packing>
+		                    </child>
+		                  </object>
+		                  <packing>
+		                    <property name="expand">False</property>
+		                    <property name="fill">True</property>
+		                    <property name="position">0</property>
+		                  </packing>
+		                </child>
+		                <child>
+		                  <object class="GtkScrolledWindow">
+		                    <property name="visible">True</property>
+		                    <property name="can_focus">True</property>
+		                    <property name="vexpand">True</property>
+		                    <property name="shadow_type">in</property>
+		                    <child>
+		                      <object class="GtkTreeView" id="treeview_profiles">
+		                        <property name="visible">True</property>
+		                        <property name="can_focus">True</property>
+		                        <property name="has_focus">True</property>
+		                        <property name="model">liststore_profiles</property>
+		                        <child internal-child="selection">
+		                          <object class="GtkTreeSelection"/>
+		                        </child>
+		                        <child>
+		                          <object class="GtkTreeViewColumn">
+		                            <property name="title" translatable="yes">$(l10n_msg 'Profile' ru 'Профиль')</property>
+		                            <property name="sort_column_id">0</property>
+		                            <child>
+		                              <object class="GtkCellRendererText"/>
+		                              <attributes>
+		                                <attribute name="text">0</attribute>
+		                              </attributes>
+		                            </child>
+		                          </object>
+		                        </child>
+		                      </object>
+		                    </child>
+		                  </object>
+		                  <packing>
+		                    <property name="expand">True</property>
+		                    <property name="fill">True</property>
+		                    <property name="position">1</property>
+		                  </packing>
+		                </child>
+		              </object>
+		              <packing>
+		                <property name="expand">False</property>
+		                <property name="fill">True</property>
+		                <property name="position">1</property>
+		              </packing>
+		            </child>
+		          </object>
+		          <packing>
+		            <property name="expand">False</property>
+		            <property name="fill">True</property>
+		            <property name="position">1</property>
+		          </packing>
+		        </child>
+		      </object>
+		    </child>
+		  </object>
+		  <object class="GtkDialog" id="win_create_profile">
+		    <property name="can_focus">False</property>
+		    <property name="border_width">10</property>
+		    <property name="title" translatable="yes">$(l10n_msg 'Create profile' ru 'Создать профиль') — $program_full_name</property>
+		    <property name="resizable">False</property>
+		    <property name="modal">True</property>
+		    <property name="icon_name">$program_icon_name</property>
+		    <property name="type_hint">dialog</property>
+		    <property name="transient_for">win_sel_profile</property>
+		    <child type="titlebar">
+		      <placeholder/>
+		    </child>
+		    <child internal-child="vbox">
+		      <object class="GtkBox">
+		        <property name="can_focus">False</property>
+		        <property name="orientation">vertical</property>
+		        <property name="spacing">2</property>
+		        <child internal-child="action_area">
+		          <object class="GtkButtonBox">
+		            <property name="can_focus">False</property>
+		            <property name="margin_top">5</property>
+		            <property name="layout_style">end</property>
+		            <child>
+		              <object class="GtkButton" id="win_create_profile_btn_cancel">
+		                <property name="label">gtk-cancel</property>
+		                <property name="visible">True</property>
+		                <property name="can_focus">True</property>
+		                <property name="receives_default">True</property>
+		                <property name="use_stock">True</property>
+		              </object>
+		              <packing>
+		                <property name="expand">True</property>
+		                <property name="fill">True</property>
+		                <property name="position">0</property>
+		              </packing>
+		            </child>
+		            <child>
+		              <object class="GtkButton" id="win_create_profile_btn_create">
+		                <property name="label" translatable="yes">$(l10n_msg 'Create profile' ru 'Создать профиль')</property>
+		                <property name="visible">True</property>
+		                <property name="can_focus">True</property>
+		                <property name="receives_default">True</property>
+		                <accelerator key="Return" signal="clicked"/>
+		              </object>
+		              <packing>
+		                <property name="expand">False</property>
+		                <property name="fill">True</property>
+		                <property name="position">1</property>
+		              </packing>
+		            </child>
+		          </object>
+		          <packing>
+		            <property name="expand">False</property>
+		            <property name="fill">False</property>
+		            <property name="position">0</property>
+		          </packing>
+		        </child>
+		        <child>
+		          <object class="GtkBox">
+		            <property name="visible">True</property>
+		            <property name="can_focus">False</property>
+		            <property name="orientation">vertical</property>
+		            <property name="spacing">5</property>
+		            <child>
+		              <object class="GtkBox">
+		                <property name="visible">True</property>
+		                <property name="can_focus">False</property>
+		                <property name="spacing">5</property>
+		                <child>
+		                  <object class="GtkLabel">
+		                    <property name="visible">True</property>
+		                    <property name="can_focus">False</property>
+		                    <property name="label" translatable="yes">$(l10n_msg 'Profile name' ru 'Имя профиля'):</property>
+		                  </object>
+		                  <packing>
+		                    <property name="expand">False</property>
+		                    <property name="fill">True</property>
+		                    <property name="position">0</property>
+		                  </packing>
+		                </child>
+		                <child>
+		                  <object class="GtkEntry" id="win_create_profile_entry_profile_name">
+		                    <property name="visible">True</property>
+		                    <property name="can_focus">True</property>
+		                    <property name="hexpand">True</property>
+		                  </object>
+		                  <packing>
+		                    <property name="expand">False</property>
+		                    <property name="fill">True</property>
+		                    <property name="position">1</property>
+		                  </packing>
+		                </child>
+		              </object>
+		              <packing>
+		                <property name="expand">False</property>
+		                <property name="fill">True</property>
+		                <property name="position">0</property>
+		              </packing>
+		            </child>
+		            <child>
+		              <object class="GtkFrame">
+		                <property name="visible">True</property>
+		                <property name="can_focus">False</property>
+		                <property name="label_xalign">0</property>
+		                <property name="shadow_type">in</property>
+		                <child>
+		                  <object class="GtkBox">
+		                    <property name="visible">True</property>
+		                    <property name="can_focus">False</property>
+		                    <property name="border_width">5</property>
+		                    <property name="orientation">vertical</property>
+		                    <child>
+		                      <object class="GtkBox">
+		                        <property name="visible">True</property>
+		                        <property name="can_focus">False</property>
+		                        <child>
+		                          <object class="GtkCheckButton" id="ckbtn_copy_profile_conf">
+		                            <property name="label" translatable="yes">$(l10n_msg 'Copy configuration file of the profile' ru 'Копировать файл конфигурации профиля'):</property>
+		                            <property name="visible">True</property>
+		                            <property name="can_focus">True</property>
+		                            <property name="receives_default">False</property>
+		                            <property name="draw_indicator">True</property>
+		                          </object>
+		                          <packing>
+		                            <property name="expand">False</property>
+		                            <property name="fill">True</property>
+		                            <property name="position">0</property>
+		                          </packing>
+		                        </child>
+		                        <child>
+		                          <object class="GtkEntry" id="entry_copy_profile_conf_from">
+		                            <property name="visible">True</property>
+		                            <property name="sensitive">False</property>
+		                            <property name="can_focus">True</property>
+		                          </object>
+		                          <packing>
+		                            <property name="expand">False</property>
+		                            <property name="fill">True</property>
+		                            <property name="position">1</property>
+		                          </packing>
+		                        </child>
+		                      </object>
+		                      <packing>
+		                        <property name="expand">False</property>
+		                        <property name="fill">True</property>
+		                        <property name="position">0</property>
+		                      </packing>
+		                    </child>
+		                    <child>
+		                      <object class="GtkBox" id="container_profile_conf">
+		                        <property name="visible">True</property>
+		                        <property name="can_focus">False</property>
+		                        <property name="orientation">vertical</property>
+		                        <property name="spacing">5</property>
+		                        <child>
+		                          <object class="GtkBox">
+		                            <property name="visible">True</property>
+		                            <property name="can_focus">False</property>
+		                            <property name="margin_top">5</property>
+		                            <child>
+		                              <object class="GtkCheckButton" id="ckbtn_limit_memory">
+		                                <property name="label" translatable="yes">$(l10n_msg 'Limit available memory' ru 'Ограничить доступную память'):</property>
+		                                <property name="visible">True</property>
+		                                <property name="can_focus">True</property>
+		                                <property name="receives_default">False</property>
+		                                <property name="draw_indicator">True</property>
+		                              </object>
+		                              <packing>
+		                                <property name="expand">False</property>
+		                                <property name="fill">True</property>
+		                                <property name="position">0</property>
+		                              </packing>
+		                            </child>
+		                            <child>
+		                              <object class="GtkSpinButton" id="spinbtn_memory_limit">
+		                                <property name="visible">True</property>
+		                                <property name="can_focus">True</property>
+		                                <property name="adjustment">adjustment_spinbtn_memory_limit</property>
+		                                <property name="snap_to_ticks">True</property>
+		                                <property name="numeric">True</property>
+		                              </object>
+		                              <packing>
+		                                <property name="expand">True</property>
+		                                <property name="fill">True</property>
+		                                <property name="position">1</property>
+		                              </packing>
+		                            </child>
+		                            <child>
+		                              <object class="GtkComboBoxText" id="combo_memory_limit_units">
+		                                <property name="visible">True</property>
+		                                <property name="can_focus">False</property>
+		                                <property name="active">1</property>
+		                                <items>
+		                                  <item id="K" translatable="yes">KiB</item>
+		                                  <item id="M" translatable="yes">MiB</item>
+		                                  <item id="G" translatable="yes">GiB</item>
+		                                </items>
+		                              </object>
+		                              <packing>
+		                                <property name="expand">False</property>
+		                                <property name="fill">True</property>
+		                                <property name="position">2</property>
+		                              </packing>
+		                            </child>
+		                          </object>
+		                          <packing>
+		                            <property name="expand">False</property>
+		                            <property name="fill">True</property>
+		                            <property name="position">0</property>
+		                          </packing>
+		                        </child>
+		                        <child>
+		                          <object class="GtkCheckButton" id="ckbtn_run_in_sandbox">
+		                            <property name="label" translatable="yes">$(l10n_msg 'Start process in the sandbox' ru 'Запускать процесс в песочнице')</property>
+		                            <property name="visible">True</property>
+		                            <property name="can_focus">True</property>
+		                            <property name="receives_default">False</property>
+		                            <property name="draw_indicator">True</property>
+		                          </object>
+		                          <packing>
+		                            <property name="expand">False</property>
+		                            <property name="fill">True</property>
+		                            <property name="position">1</property>
+		                          </packing>
+		                        </child>
+		                        <child>
+		                          <object class="GtkCheckButton" id="ckbtn_restore_initial_profile_state">
+		                            <property name="label" translatable="yes">$(l10n_msg 'Restore initial profile state' ru 'Восстанавливать исходное состояние профиля')</property>
+		                            <property name="visible">True</property>
+		                            <property name="can_focus">True</property>
+		                            <property name="receives_default">False</property>
+		                            <property name="tooltip_text" translatable="yes">$(l10n_msg 'Rollback profile changes after the process is terminated' ru 'Откатывать изменения профиля после завершения процесса')</property>
+		                            <property name="draw_indicator">True</property>
+		                          </object>
+		                          <packing>
+		                            <property name="expand">False</property>
+		                            <property name="fill">True</property>
+		                            <property name="position">2</property>
+		                          </packing>
+		                        </child>
+		                      </object>
+		                      <packing>
+		                        <property name="expand">False</property>
+		                        <property name="fill">True</property>
+		                        <property name="position">1</property>
+		                      </packing>
+		                    </child>
+		                  </object>
+		                </child>
+		                <child type="label">
+		                  <object class="GtkLabel">
+		                    <property name="visible">True</property>
+		                    <property name="can_focus">False</property>
+		                    <property name="label" translatable="yes">$(l10n_msg 'Profile configuration' ru 'Конфигурация профиля')</property>
+		                  </object>
+		                </child>
+		              </object>
+		              <packing>
+		                <property name="expand">False</property>
+		                <property name="fill">True</property>
+		                <property name="position">1</property>
+		              </packing>
+		            </child>
+		          </object>
+		          <packing>
+		            <property name="expand">False</property>
+		            <property name="fill">True</property>
+		            <property name="position">1</property>
+		          </packing>
+		        </child>
+		      </object>
+		    </child>
+		  </object>
+		</interface>
+		EOF
+		jsio__read; jsio__read
+
+		jsio '[
+			"liststore_profiles",
+
+			"win_sel_profile",
+			"btn_close",
+			"btn_start",
+			"label_sel_profile_text",
+			"btn_create_profile",
+			"btn_edit_profile",
+			"btn_open_profile",
+			"btn_start_command_shell",
+			"btn_remove_profile",
+			"treeview_profiles",
+
+			"win_create_profile",
+			"win_create_profile_btn_create",
+			"win_create_profile_btn_cancel",
+			"win_create_profile_entry_profile_name",
+			"ckbtn_copy_profile_conf",
+			"entry_copy_profile_conf_from",
+			"container_profile_conf",
+			"ckbtn_limit_memory",
+			"spinbtn_memory_limit",
+			"combo_memory_limit_units",
+			"ckbtn_run_in_sandbox",
+			"ckbtn_restore_initial_profile_state"
+		].forEach((id) => ui[id] = builder.get_object(id))'
+
+		jsio 'ui.treeview_profiles.get_column(0).emit("clicked")'
+
+		jsio '
+			ui.win_sel_profile.connect("delete-event", () => Gtk.main_quit());
+			ui.btn_close.connect("clicked", () => Gtk.main_quit());
+			ui.btn_start.connect("clicked", jsio.callback("start"));
+			ui.btn_create_profile.connect("clicked", jsio.callback("win_create_profile_show"));
+			ui.btn_edit_profile.connect("clicked", jsio.callback("edit_profile"));
+			ui.btn_open_profile.connect("clicked", jsio.callback("open_profile"));
+			ui.btn_start_command_shell.connect("clicked", jsio.callback("start_command_shell"));
+			ui.btn_remove_profile.connect("clicked", jsio.callback("remove_profile"));
+			ui.treeview_profiles.connect("row-activated", jsio.callback("start"));
+
+			ui.win_create_profile.connect("delete-event", jsio.callback("win_create_profile_close"));
+			ui.win_create_profile_btn_cancel.connect("clicked", jsio.callback("win_create_profile_close"));
+			ui.win_create_profile_btn_create.connect("clicked", jsio.callback("create_profile"));
+			ui.ckbtn_copy_profile_conf.connect("toggled", () => {
+				let isActive = ui.ckbtn_copy_profile_conf.get_active();
+				ui.entry_copy_profile_conf_from.set_sensitive(isActive);
+				ui.container_profile_conf[isActive ? "hide" : "show"]();
+			});'
+
+		jsio 'ui.label_sel_profile_text.set_markup(' "$(l10n_msg 'Select a profile or create a new one for the "' ru 'Выберите профиль или создайте новый для приложения «')<b>" ' + GLib.markup_escape_text(' "$app_name" ', -1) + ' "</b>$(l10n_msg '" application' ru '»')" ')'
+
+		gui_liststore_profiles_update
+
+		jsio 'ui.win_sel_profile.show()'
+
+		jsio : = 'Gtk.main()'
+		while jsio__read event_name; do
+			case $event_name in
+			win_create_profile_show)
+				gui_get_sel_profile 1 &&
+					jsio '
+						ui.win_create_profile_entry_profile_name.set_text(' "$sel_profile_name" ');
+						ui.entry_copy_profile_conf_from.set_text(' "$app_name/$sel_profile_name" ');'
+				jsio '
+					ui.win_create_profile_entry_profile_name.grab_focus();
+					ui.win_create_profile.show();'
+				;;
+			win_create_profile_close)
+				jsio 'ui.win_create_profile.hide()'
+				gui_win_create_profile_reset
+				jsio 'ret(true)'; continue
+				;;
+			create_profile)
+				command='"$0" -cp "$sel_profile_name" -- "$app_name"'
+
+				jsio sel_profile_name= 'ui.win_create_profile_entry_profile_name.get_text()'
+				case $sel_profile_name in
+				''|.|..|*/*|*"$lf"*)
+					gui_dialog_err ui.win_create_profile "$(l10n_msg 'Invalid profile name' ru 'Некорректное имя профиля'): \"$sel_profile_name\""
+					jsio 'ret()'; continue
+				esac
+
+				jsio copy_profile_conf_from= 'ui.ckbtn_copy_profile_conf.get_active()'
+				case $copy_profile_conf_from in
+				true)
+					jsio copy_profile_conf_from= 'ui.entry_copy_profile_conf_from.get_text()'
+					command=$command' copy_profile_conf_from="$copy_profile_conf_from"'
+					;;
+				*)
+					jsio limit_memory= 'ui.ckbtn_limit_memory.get_active()'
+					case $limit_memory in
+					true)
+						jsio limit_memory= 'ui.spinbtn_memory_limit.get_value() + ui.combo_memory_limit_units.get_active_id()'
+						command=$command' limit_memory="$limit_memory"'
+					esac
+
+					jsio run_in_sandbox= 'ui.ckbtn_run_in_sandbox.get_active()'
+					case $run_in_sandbox in
+					true)
+						command=$command' run_in_sandbox=1'
+					esac
+
+					jsio restore_initial_profile_state= 'ui.ckbtn_restore_initial_profile_state.get_active()'
+					case $restore_initial_profile_state in
+					true)
+						command=$command' restore_initial_profile_state=1'
+					esac
+					;;
+				esac
+
+				err_text=$(eval "$command" 2>&1) || {
+					gui_dialog_err ui.win_create_profile "$err_text"
+					jsio 'ret()'; continue
+				}
+
+				jsio 'ui.win_create_profile.hide()'
+				gui_win_create_profile_reset
+				gui_liststore_profiles_update
+				;;
+			edit_profile)
+				gui_get_sel_profile || {
+					jsio 'ret()'; continue
+				}
+				(xdg-open "$profiles_path/$app_name/$sel_profile_name/.$program_name-profile" &)
+				;;
+			open_profile)
+				gui_get_sel_profile || {
+					jsio 'ret()'; continue
+				}
+				(xdg-open "$profiles_path/$app_name/$sel_profile_name" &)
+				;;
+			remove_profile)
+				gui_get_sel_profile || {
+					jsio 'ret()'; continue
+				}
+				jsio result= '
+					let dialog = new Gtk.MessageDialog({
+						transient_for: ui.win_sel_profile,
+						message_type: Gtk.MessageType.QUESTION,
+						buttons: Gtk.ButtonsType.OK_CANCEL,
+						title: ' "$program_full_name — $(l10n_msg 'Removing profile' ru 'Удаление профиля')" ',
+						text: ' "$(
+							jsio sel_profile_name_markup= 'GLib.markup_escape_text(' "$sel_profile_name" ', -1)'
+							printf %s\\n "$(l10n_msg 'Remove the profile "' ru 'Удалить профиль «')<b>$sel_profile_name_markup</b>$(l10n_msg '"' ru '»')?"
+						)" ',
+						use_markup: true
+					});
+					let result = dialog.run();
+					dialog.destroy();
+					result == Gtk.ResponseType.OK;'
+				case $result in
+				true) ;;
+				*) jsio 'ret()'; continue
+				esac
+				err_text=$("$0" -rp "$sel_profile_name" -- "$app_name" 2>&1) ||
+					gui_dialog_err ui.win_create_profile "$err_text"
+				gui_liststore_profiles_update
+				;;
+			start_command_shell)
+				gui_get_sel_profile || {
+					jsio 'ret()'; continue
+				}
+				(
+					unset -v executable_path
+					profile_dir=$profiles_path/$app_name/$sel_profile_name
+					old_ifs=$IFS; IFS=:
+					for executable_name in exo-open x-terminal-emulator xterm; do
+						for dir in $PATH; do
+							[ -f "$dir/$executable_name" ] && [ -x "$dir/$executable_name" ] && {
+								executable_path=$dir/$executable_name
+								break
+							}
+						done
+						[ -n "$executable_path" ] && break
+					done
+					IFS=$old_ifs
+					[ -z "$executable_path" ] && {
+						gui_dialog_err ui.win_sel_profile "$(l10n_msg 'No terminal emulator is found in the system' ru 'Не найден эмулятор терминала в системе'); PATH=$PATH"
+						exit 1
+					}
+					{
+						shell=$(awk -F: -- 'BEGIN { if(ARGV[1] == "") exit 1; ARGC = 1 } $3 == ARGV[1] { print $7 }' "$USER_ID" < /etc/passwd) &&
+						[ -n "$shell" ]
+					} || {
+						gui_dialog_err ui.win_sel_profile "$(l10n_msg 'Unable to get the default shell for the current user' ru 'Невозможно получить командную оболочку по умолчанию для текущего пользователя')"
+						exit 1
+					}
+					cd "$profile_dir" || {
+						gui_dialog_err ui.win_sel_profile "$(l10n_msg 'Unable to change directory to' ru 'Невозможно изменить каталог на') \`$profile_dir'"
+						exit 1
+					}
+					case $executable_name in
+					exo-open)
+						("$executable_path" --launch TerminalEmulator "$0" -a "$app_name" -p "$sel_profile_name" -- "$shell" &);;
+					*)
+						("$executable_path" -e "$0" -a "$app_name" -p "$sel_profile_name" -- "$shell" &);;
+					esac
+				)
+				;;
+			start)
+				gui_get_sel_profile && {
+					profile_name=$sel_profile_name
+					unset -v sel_profile_name
+					break
+				}
+				;;
+			'')
+				jsio__read; break;;
+			esac
+			jsio 'ret()'
+		done
+
+		jsio__exit || exit 1
+		trap - $SIGNALS
+
+		case ${profile_name+1} in
+		'') exit 0
+		esac
+	esac
+
+	profile_dir=$profiles_path/$app_name/$profile_name
+	[ -e "$profile_dir" ] ||
+		err 1 "profile \`$profile_name' of the application \`$app_name' does not exist"
+	restore_profile() {
+		flock -u 9 || {
+			err "restore_profile(): unable to release lock \`$profile_dir/.$program_name-run-lock'"
+			return 1
+		}
+		{
+			flock -nE2 9 || {
+				[ $? -eq 2 ] && return 0
+				err "restore_profile(): unable to get lock \`$profile_dir/.$program_name-run-lock'"
+				return 1
+			}
+			{ {
+				{ set -- "$(awk -F: -- 'BEGIN { if(ARGV[1] == "") exit 1; ARGC = 1 } $3 == ARGV[1] { print $6 }' "$USER_ID" < /etc/passwd)" && [ -n "$1" ]; } ||
+					err 'restore_profile(): unable to get path to the home directory from the /etc/passwd'
+			} && {
+				[ ":$profile_dir" != ":$1" ] ||
+					err 'restore_profile(): path to the profile directory is the same as the path to the user home directory'
+			}; } || return 1
+			if [ -e "$profile_dir/.$program_name-profile-restore" ]; then
+				set -- 1
+			else
+				set -- 0
+				mkdir "$profile_dir/.$program_name-profile-restore"
+			fi
+			for restore_profile___file in "$profile_dir/"* "$profile_dir/".*; do
+				case $restore_profile___file in
+				"$profile_dir"|"$profile_dir/"|"$profile_dir/.."|"$profile_dir/."|\
+				"$profile_dir/.$program_name-profile"|\
+				"$profile_dir/.$program_name-profile-restore"|\
+				"$profile_dir/.$program_name-profile-restore/.$program_name-run-lock")
+					continue
+				esac
+				[ -e "$restore_profile___file" ] || continue
+				case $1 in
+				1) rm -rf -- "$restore_profile___file";;
+				*) cp -dfpRT -- "$restore_profile___file" "$profile_dir/.$program_name-profile-restore/${restore_profile___file##*/}";;
+				esac || return 1
+			done
+			case $1 in
+			1)
+				isdirempty "$profile_dir/.$program_name-profile-restore" || [ $? -eq 2 ] || {
+					rm -rf --  \
+						"$profile_dir/.$program_name-profile-restore/.$program_name-profile" \
+						"$profile_dir/.$program_name-profile-restore/.$program_name-profile-restore" \
+						"$profile_dir/.$program_name-profile-restore/.$program_name-run-lock" || return 1
+					cp -dfpRT -- "$profile_dir/.$program_name-profile-restore" "$profile_dir" || return 1
+				}
+			esac
+			true
+		} 9>"$profile_dir/.$program_name-run-lock" || return 1
+		return 0
+	}
+	create_xdg_dir_links() {
+		[ -n "$1" ] || {
+			err "create_xdg_dir_links(): <parent_home> argument is empty or not specified"
+			return 1
+		}
+		[ ":$1" != "$profile_dir" ] || {
+			err "create_xdg_dir_links(): <parent_home> argument must not be equal to the profile directory"
+			return 1
+		}
+		create_xdg_dir_links___parent_home=$1; shift
+		while [ $# -ne 0 ]; do
+			{
+				create_xdg_dir_links___home_xdg_dir_path=$(HOME=$create_xdg_dir_links___parent_home xdg-user-dir "$1") &&
+				[ -n "$create_xdg_dir_links___home_xdg_dir_path" ]
+			} || return 1
+			{
+				create_xdg_dir_links___profile_xdg_dir_path=$(HOME=$profile_dir xdg-user-dir "$1") &&
+				[ -n "$create_xdg_dir_links___profile_xdg_dir_path" ]
+			} || return 1
+			case $create_xdg_dir_links___profile_xdg_dir_path in
+			"$profile_dir")
+				shift; continue
+			esac
+			[ -e "$create_xdg_dir_links___profile_xdg_dir_path" ] && {
+				if [ -d "$create_xdg_dir_links___profile_xdg_dir_path" ] && ! [ -h "$create_xdg_dir_links___profile_xdg_dir_path" ]; then
+					isdirempty "$create_xdg_dir_links___profile_xdg_dir_path" &&
+					rmdir -- "$create_xdg_dir_links___profile_xdg_dir_path"
+				else
+					rm -f -- "$create_xdg_dir_links___profile_xdg_dir_path"
+				fi || { shift; continue; }
+			}
+			ln -s -- "$create_xdg_dir_links___home_xdg_dir_path" "$create_xdg_dir_links___profile_xdg_dir_path" || return 1
+			shift
+		done
+	}
+	run() { exec "$app_path" "$@"; }
+	[ -f "$profile_dir/.$program_name-profile" ] && {
+		. "$profile_dir/.$program_name-profile" ||
+			err 1 "profile file \`$profile_dir/.$program_name-profile' returned code $?"
+	}
+	trap ' ' $SIGNALS TTOU
+	{
+		flock -s 9 ||
+			err 1 "unable to get lock \`$profile_dir/.$program_name-run-lock'"
+		run "$@"
+		exit $?
+	} 9>"$profile_dir/.$program_name-run-lock" || exit 1
+	;;
+create_profile)
+	unset -v \
+		copy_profile_conf_from \
+		limit_memory
+	run_in_sandbox=0
+	restore_initial_profile_state=0
+
+	for optval in "$@"; do
+		case $optval in
+		copy_profile_conf_from=*) ;;
+		limit_memory=*) ;;
+		run_in_sandbox=*) ;;
+		restore_initial_profile_state=*) ;;
+		*) err_usage "\`$optval' is invalid value of the <option_name>=<option_value> pair"
+		esac
+		eval "${optval%%=*}=\${optval#*=}"
+	done
+
+	case $copy_profile_conf_from in
+	'') ;;
+	*)
+		{
+			case $copy_profile_conf_from in
+			*/*) true;;
+			*) false;;
+			esac &&
+			copy_profile_conf_from_app_name=${copy_profile_conf_from%%/*} &&
+			copy_profile_conf_from_profile_name=${copy_profile_conf_from#*/} &&
+			case $copy_profile_conf_from_app_name in
+			''|.|..|*"$lf"*) false;;
+			*) true;;
+			esac &&
+			case $copy_profile_conf_from_profile_name in
+			''|.|..|*/*|*"$lf"*) false;;
+			*) true;;
+			esac
+		} ||
+			err 1 "\`$copy_profile_conf_from' is invalid value of the \`copy_profile_conf_from' option"
+		[ -d "$profiles_path/$copy_profile_conf_from_app_name/$copy_profile_conf_from_profile_name" ] ||
+			err 1 "\`$copy_profile_conf_from' is invalid value of the \`copy_profile_conf_from' option because profile \`$copy_profile_conf_from_profile_name' of the application \`$copy_profile_conf_from_app_name' does not exist"
+		copy_profile_conf_from=$profiles_path/$copy_profile_conf_from_app_name/$copy_profile_conf_from_profile_name
+	esac
+
+	case $limit_memory in
+	'') ;;
+	*)
+		LC_ALL=C awk -- 'BEGIN { exit ARGV[1] !~ /^[1-9][0-9]*[KMG]$/ }' "$limit_memory" ||
+			err 1 "\`$limit_memory' is invalid value of the \`limit_memory' option"
+	esac
+
+	case $run_in_sandbox in
+	0|1) ;;
+	*) err 1 "\`$run_in_sandbox' is invalid value of the \`run_in_sandbox' option"
+	esac
+
+	case $restore_initial_profile_state in
+	0|1) ;;
+	*) err 1 "\`$restore_initial_profile_state' is invalid value of the \`restore_initial_profile_state' option"
+	esac
+
+	[ -d "$profiles_path/$app_name/$profile_name" ] &&
+		err 1 "profile \`$profile_name' of the application \`$app_name' is already exist"
+	mkdir -p "$profiles_path/$app_name/$profile_name" || exit 1
+
+	if [ -n "$copy_profile_conf_from" ]; then
+		[ -f "$copy_profile_conf_from/.$program_name-profile" ] && {
+			cat "$copy_profile_conf_from/.$program_name-profile" > "$profiles_path/$app_name/$profile_name/.$program_name-profile" || exit 1
+		}
+	else
+		cat <<- EOF > "$profiles_path/$app_name/$profile_name/.$program_name-profile"
+		run() {
+		${tab}set -- "\$app_path" "\$@"
+
+		${tab}# Start the process in the sandbox
+		${tab}[ \$run_in_sandbox -ne 0 ] && {
+		${tab}${tab}mkdir -p "\$profile_dir/sandbox" || return 1
+		${tab}${tab}set -- bwrap \\
+		${tab}${tab}${tab}--ro-bind /bin /bin \\
+		${tab}${tab}${tab}--dev /dev \\
+		${tab}${tab}${tab}--bind "\$profile_dir/sandbox" "/home/\$USER" \\
+		${tab}${tab}${tab}--ro-bind /etc /etc \\
+		${tab}${tab}${tab}--ro-bind /usr /usr \\
+		${tab}${tab}${tab}--ro-bind /lib /lib \\
+		${tab}${tab}${tab}--ro-bind-try /lib64 /lib64 \\
+		${tab}${tab}${tab}--dir "/run/user/\$USER_ID" \\
+		${tab}${tab}${tab}--ro-bind /sbin /sbin \\
+		${tab}${tab}${tab}--proc /proc \\
+		${tab}${tab}${tab}--ro-bind /var/local /var/local \\
+		${tab}${tab}${tab}--dir /var/spool/cron/crontabs \\
+		${tab}${tab}${tab}--symlink ../tmp var/tmp \\
+		${tab}${tab}${tab}--dir /tmp \\
+		${tab}${tab}${tab}--unshare-all \\
+		${tab}${tab}${tab}--share-net \\
+		${tab}${tab}${tab}--die-with-parent \\
+		${tab}${tab}${tab}--setenv HOME "/home/\$USER" \\
+		${tab}${tab}${tab}--setenv XDG_RUNTIME_DIR "/run/user/\$USER_ID" \\
+		${tab}${tab}sh -c '
+		${tab}${tab}${tab}for file in /etc/profile ~/.profile /etc/xprofile ~/.xprofile; do
+		${tab}${tab}${tab}	[ -f "\$file" ] || continue
+		${tab}${tab}${tab}	. "\$file"
+		${tab}${tab}${tab}done
+		${tab}${tab}${tab}exec "\$@"
+		${tab}${tab}' - "\$@"
+		${tab}}
+
+		${tab}# Limit RAM
+		${tab}$([ -n "$limit_memory" ] || printf \#)set -- systemd-run --scope -p MemoryMax=$(
+			case $limit_memory in
+			'') printf 100M;;
+			*) printf %s "$limit_memory";;
+			esac
+		) "\$@"
+
+		${tab}# Replace the current process with a new one
+		${tab}$([ $restore_initial_profile_state -eq 0 ] || printf \#)set -- exec "\$@"
+
+		${tab}# Start the process
+		${tab}"\$@"
+		${tab}exit_code=\$?
+
+		${tab}# Restore the profile directory contents and exit.
+		${tab}# If a ~/.$program_name-profile-restore directory exists in the profile,
+		${tab}# then the profile directory contents will be restored from it.
+		${tab}# It only works if the HOME variable has been changed.
+		${tab}$([ $restore_initial_profile_state -eq 1 ] || printf \#)restore_profile || [ \$exit_code -ne 0 ] || exit_code=1
+
+		${tab}return \$exit_code
+		}
+
+		# Start the process in the sandbox
+		run_in_sandbox=$run_in_sandbox
+
+		[ \$run_in_sandbox -ne 0 ] || {
+		${tab}# Overriding paths to XDG directories
+		${tab}export XDG_CACHE_HOME="\$profile_dir/.cache" || return
+		${tab}export XDG_CONFIG_HOME="\$profile_dir/.config" || return
+		${tab}export XDG_DATA_HOME="\$profile_dir/.local/share" || return
+		${tab}export XDG_STATE_HOME="\$profile_dir/.local/state" || return
+
+		${tab}# Changing the home directory path
+		${tab}parent_home=\$HOME
+		${tab}export HOME="\$profile_dir" || return
+		}
+
+		# Load profile if home directory path has been changed
+		[ "\$HOME" = "\$profile_dir" ] && {
+		${tab}for file in /etc/profile ~/.profile /etc/xprofile ~/.xprofile; do
+		${tab}${tab}[ -f "\$file" ] || continue
+		${tab}${tab}. "\$file"
+		${tab}done
+		}
+
+		# Performing profile configuration actions if the home directory path has been
+		# changed and configuration actions have not been performed previously
+		[ "\$HOME" != "\$profile_dir" ] ||
+		[ -e "\$profile_dir/.\$program_name-profile-configured" ] || {
+		${tab}touch "\$profile_dir/.\$program_name-profile-configured" || return
+		${tab}create_xdg_dir_links "\$parent_home" \\
+		${tab}${tab}DESKTOP \\
+		${tab}${tab}DOCUMENTS \\
+		${tab}${tab}DOWNLOAD \\
+		${tab}${tab}MUSIC \\
+		${tab}${tab}PICTURES \\
+		${tab}${tab}PUBLICSHARE \\
+		${tab}${tab}TEMPLATES \\
+		${tab}${tab}VIDEOS || return
+		}
+
+		return 0
+		EOF
+	fi
+	;;
+remove_profile)
+	case ${profile_name+1} in
+	1)
+		rm -rf "$profiles_path/$app_name/$profile_name" || exit 1
+		isdirempty "$profiles_path/$app_name" && {
+			rmdir "$profiles_path/$app_name" || exit 1
+		}
+		;;
+	*)
+		rm -rf "$profiles_path/$app_name" || exit 1
+		;;
+	esac
+	;;
+esac
+
+exit 0

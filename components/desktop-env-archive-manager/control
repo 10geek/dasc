@@ -1,0 +1,5 @@
+name=Desktop environment / Archive manager (engrampa)
+name[ru]=Окружение рабочего стола / Менеджер архивов (engrampa)
+
+depends/desktop-env
+after/desktop-env

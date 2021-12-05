@@ -1,0 +1,2 @@
+blueman manual
+pulseaudio-module-bluetooth auto for_manual(blueman) for(blueman bluez)

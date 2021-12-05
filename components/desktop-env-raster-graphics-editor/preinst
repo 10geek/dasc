@@ -1,0 +1,39 @@
+#!/usr/bin/env sh
+
+fn() {
+	while [ $# -ne 0 ]; do
+		mkdir -p "$1/$dir" || exit
+		shift
+	done
+}
+for dir in \
+	CrashLog \
+	backups \
+	brushes \
+	curves \
+	dynamics \
+	environ \
+	filters \
+	fonts \
+	fractalexplorer \
+	gfig \
+	gflare \
+	gimpressionist \
+	gradients \
+	icons \
+	internal-data \
+	interpreters \
+	levels \
+	modules \
+	palettes \
+	patterns \
+	plug-ins \
+	scripts \
+	templates \
+	themes \
+	tmp \
+	tool-options \
+	tool-presets
+do
+	fn "$PREPDIR/etc/debcomp/userconf/desktop/skel/.config/GIMP/"*
+done

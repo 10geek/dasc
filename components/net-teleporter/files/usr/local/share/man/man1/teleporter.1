@@ -1,0 +1,85 @@
+.TH TELEPORTER 1 2018\-11\-11
+.nh
+.SH NAME
+teleporter \- script for managing remote connections and mounting remote filesystems
+.SH SYNOPSIS
+\fBteleporter\fP [\fIoptions\fP] ... [\fIconnection_name_or_url\fP] [\fIarguments\fP]
+
+URL format: \fIprotocol\fP\fB://\fP[\fIuser\fP\fB@\fP]\fIhost\fP[\fB:\fP\fIport\fP][\fIpath\fP]
+.SH OPTIONS
+.TP
+\fB\-l\fP
+.RS
+.TP
+Displays a table of existing connections in the following format:
+\fIstatus\fP \fIconnection_name\fP
+.TP
+The "\fIstatus\fP" field can have the following values:
+.RS
+.TP
+\fB*\fP
+unsaved connection
+.TP
+\fB+\fP
+active saved connection
+.TP
+\fB\-\fP
+inactive saved connection
+.TP
+\fB!\fP
+file system is not available
+.RE
+.RE
+.TP
+\fB\-u\fP
+Unmount the file system. If no file system is specified, all file systems will be unmounted.
+.TP
+\fB\-f\fP
+Unmount the file system even if it is being used by a process
+.TP
+\fB\-i\fP \fIpath\fP
+Use specified authentication key file
+.TP
+\fB\-p\fP \fIprotocol\fP
+Use the specified protocol instead of default
+.TP
+\fB\-o\fP \fIname\fP\fB=\fP\fIvalue\fP
+Override the value of the connection configuration option. Can be used multiple times.
+.TP
+\fB\-d\fP \fIpath\fP
+Use the specified directory path with the configuration files
+.TP
+\fB\-a\fP
+Mount all file systems with the specified automount option
+.TP
+\fB\-v\fP, \fB\-\-version\fP
+Output version information and exit
+.TP
+\fB\-h\fP, \fB\-\-help\fP
+Display this help and exit
+.SH ENVIRONMENT
+.TP
+.B PASSWORD
+Used for automatic password entry. Example:
+
+\fBPASSWORD\fP=yourpassword teleporter sftp://root@storage.lan:2022/root
+.SH FILES
+.TP
+.I "~/.teleporter/conf"
+Directory that contains connections configuration files
+.TP
+.I "~/.teleporter/keys"
+Directory that contains the authentication keys
+.TP
+.I "~/.teleporter/mnt"
+Directory for mount points
+.SH "SEE ALSO"
+.BR ssh (1),
+.BR sshfs (1),
+.BR ssh\-keygen (1),
+.BR curlftpfs (1),
+.BR smbnetfs (1),
+.BR vncviewer (1),
+.BR xfreerdp (1)
+.SH AUTHORS
+\fB10geek\fP

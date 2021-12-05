@@ -1,0 +1,35 @@
+# This is a POSIX-shell script that is executed when the
+# Openbox session starts. To see a list of applications launched
+# through XDG autostart, run the command:
+# /usr/lib/x86_64-linux-gnu/openbox-xdg-autostart --list OPENBOX
+
+
+{
+	command -v synclient > /dev/null &&
+		grep -qxi \
+			'N: \{,1\}name.* synaptics touchpad\( ..*\)\{,1\}["'\'']\{,1\}' \
+			/proc/bus/input/devices &&
+		synclient TapButton3=2
+} &
+
+xfsettingsd --sm-client-disable --daemon
+dbus-wait-service \
+	"com.github.chjj.compton.$(printf %s "$DISPLAY" | tr -c A-Za-z0-9 _)" \
+	sh -c 'while :; do compton --dbus; sleep 1; done'
+lxpolkit &
+while :; do pcmanfm --desktop; sleep 1; done &
+while :; do xfce4-panel --sm-client-disable; sleep 1; done &
+xdotool search --sync --pid $! --class '^xfce4-panel$'
+udiskie &
+/usr/local/share/dasc/libexec/desktop/notify-has-mail &
+
+systemctl -q is-active cups.service cups.socket &&
+	system-config-printer-applet &
+
+command -v gigolo > /dev/null && [ -f ~/.config/gigolo/bookmarks ] &&
+	LC_ALL=C awk -v exit_code=1 '{
+		if(sub(/^[\t ]*autoconnect[\t ]*=/, "") && NF == 1 && $1 + 0) {
+			exit_code = 0; exit
+		}
+	} END { exit exit_code }' ~/.config/gigolo/bookmarks &&
+	gigolo &

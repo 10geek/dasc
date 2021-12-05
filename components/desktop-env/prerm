@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+
+. "$VARFILE" || exit
+
+
+#/*****************************************************************************\
+# Restoring initial alternatives
+#\............................................................................./
+case $alternative_x_cursor_theme_status in
+auto)
+	update-alternatives --auto x-cursor-theme
+	;;
+*)
+	update-alternatives --set x-cursor-theme "$alternative_x_cursor_theme_value"
+	;;
+esac || exit
+
+#/*****************************************************************************\
+# Removing files and directories from the lightdm user's home directory, which
+# was previously replaced by the corresponding ones from the configuration
+#\............................................................................./
+fn() {
+	while [ $# -ne 0 ]; do
+		debcomp remove -n "/var/lib/lightdm/$1" || return
+		shift
+	done
+}
+eval "fn $lightdm_home_replaced_files" || exit

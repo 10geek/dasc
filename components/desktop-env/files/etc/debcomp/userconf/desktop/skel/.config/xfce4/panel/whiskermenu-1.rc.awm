@@ -1,0 +1,79 @@
+favorites=
+recent=
+button-icon=view-list-text
+button-single-row=false
+show-button-title=false
+show-button-icon=true
+launcher-show-name=true
+launcher-show-description=true
+launcher-show-tooltip=true
+item-icon-size=2
+hover-switch-category=true
+category-show-name=true
+category-icon-size=1
+load-hierarchy=false
+view-as-icons=false
+recent-items-max=0
+favorites-in-recent=true
+display-recent-default=false
+position-search-alternate=false
+position-commands-alternate=true
+position-categories-alternate=true
+stay-on-focus-out=false
+confirm-session-command=false
+menu-width=425
+menu-height=475
+menu-opacity=100
+command-settings=xfce4-settings-manager
+show-command-settings=true
+command-lockscreen=dm-tool lock
+show-command-lockscreen=false
+command-switchuser=gsesctl switch-user
+show-command-switchuser=false
+command-logoutuser=gsesctl logout
+show-command-logoutuser=true
+command-restart=gsesctl reboot
+show-command-restart=true
+command-shutdown=gsesctl shutdown
+show-command-shutdown=true
+command-suspend=gsesctl suspend
+show-command-suspend=false
+command-hibernate=gsesctl hibernate
+show-command-hibernate=false
+command-logout=gsesctl
+show-command-logout=false
+command-menueditor=sh -c 'exec xdg-open ~/.local/share/applications'
+show-command-menueditor=true
+command-profile=mugshot
+show-command-profile=false
+search-actions=5
+
+[action0]
+name=<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Man-страницы" : "Man Pages" ?>
+pattern=#
+command=exo-open --launch TerminalEmulator man %s
+regex=false
+
+[action1]
+name=<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Поиск в Веб" : "Web Search" ?>
+pattern=?
+command=exo-open --launch WebBrowser https://duckduckgo.com/?q=%u
+regex=false
+
+[action2]
+name=<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Выполнить в терминале" : "Run in Terminal" ?>
+pattern=!
+command=exo-open --launch TerminalEmulator %s
+regex=false
+
+[action3]
+name=<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Открыть URI" : "Open URI" ?>
+pattern=^(file|http|https):\\/\\/(.*)$
+command=xdg-open \\0
+regex=true
+
+[action4]
+name=<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Открыть путь в файловом менеджере" : "Open Path in File Manager" ?>
+pattern=/
+command=exo-open --launch FileManager %S
+regex=false

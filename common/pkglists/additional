@@ -1,0 +1,55 @@
+anacron manual for_manual(unattended-upgrades) for(unattended-upgrades)
+apparmor manual
+aptitude manual for_manual(reportbug) for(aptitude-common apt)
+atool manual
+bsd-mailx manual for_manual(unattended-upgrades mailhandler anacron reportbug) for(unattended-upgrades mailhandler)
+busybox-static manual
+bzip2 manual for_manual(rsync info aptitude htop lsof apparmor openssh-client unattended-upgrades less wget gpg screen locales nano vim-tiny xz-utils strace ltrace psmisc mc atool chrony anacron tzdata util-linux debianutils hexedit elinks bsd-mailx mailhandler inotify-tools zpaq ncdu squashfs-tools fakeroot python3 reportbug) for(tar mc mailcap)
+chrony manual for_manual(unattended-upgrades) for(systemd)
+debianutils manual for_manual(anacron unattended-upgrades)
+elinks manual
+fakeroot manual
+gpg manual
+hexedit manual
+htop manual
+info manual
+inotify-tools manual
+less manual
+locales manual for_manual(lsof wget apparmor gpg screen nano bzip2 htop rsync vim-tiny aptitude info openssh-client unattended-upgrades xz-utils strace ltrace psmisc less mc atool chrony anacron tzdata util-linux debianutils hexedit elinks bsd-mailx mailhandler inotify-tools zpaq ncdu squashfs-tools fakeroot python3 reportbug) for(libc6)
+lsof manual for_manual(htop) for(htop)
+ltrace manual
+mailhandler manual for_manual(bsd-mailx anacron unattended-upgrades reportbug) for(bsd-mailx anacron unattended-upgrades reportbug)
+manpages manual for_manual(lsof wget apparmor gpg screen locales nano bzip2 htop rsync vim-tiny aptitude info openssh-client unattended-upgrades xz-utils strace ltrace psmisc less mc atool chrony anacron tzdata util-linux debianutils hexedit elinks bsd-mailx mailhandler inotify-tools zpaq ncdu squashfs-tools fakeroot python3 reportbug) for(libc-bin)
+mc manual
+nano manual
+ncdu manual
+openssh-client manual for_manual(rsync) for(rsync)
+psmisc manual
+python3 manual for_manual(apparmor rsync unattended-upgrades reportbug) for(rsync)
+reportbug manual for(python3-reportbug)
+rsync manual
+screen manual
+squashfs-tools manual
+strace manual for_manual(htop) for(htop)
+tzdata manual for_manual(apparmor chrony unattended-upgrades rsync python3 reportbug)
+unattended-upgrades manual
+util-linux manual for_manual(unattended-upgrades mailhandler anacron bsd-mailx reportbug)
+vim-tiny manual for(vim-common)
+wget manual
+xz-utils manual for_manual(rsync unattended-upgrades info aptitude htop lsof apparmor openssh-client less wget gpg screen locales nano bzip2 vim-tiny strace ltrace psmisc mc atool chrony anacron tzdata util-linux debianutils hexedit elinks bsd-mailx mailhandler inotify-tools zpaq ncdu squashfs-tools fakeroot python3 reportbug) for(tar atool mailcap)
+zpaq manual
+apparmor-utils auto for_manual(apparmor) for(apparmor)
+dbus auto for_manual(unattended-upgrades) for(libdbus-1-3 systemd)
+dbus-user-session auto for_manual(unattended-upgrades) for(dbus)
+debconf auto for_manual(info gpg apparmor locales unattended-upgrades rsync aptitude bzip2 htop less vim-tiny openssh-client screen lsof ltrace wget strace xz-utils nano psmisc mc atool chrony anacron tzdata util-linux debianutils hexedit elinks bsd-mailx mailhandler inotify-tools zpaq ncdu squashfs-tools fakeroot python3 reportbug) for(adduser apparmor libc6 libpam-modules libpam-runtime libpam0g libssl1.1 locales unattended-upgrades iproute2 tzdata ca-certificates)
+krb5-locales auto for_manual(rsync openssh-client elinks anacron apparmor chrony bsd-mailx util-linux unattended-upgrades mailhandler python3 reportbug) for(libkrb5-3)
+lbzip2 auto for_manual(atool) for(atool)
+libgcc-s1 auto for_manual(ltrace mc tzdata info anacron apparmor chrony nano screen bzip2 wget aptitude psmisc atool vim-tiny elinks lsof bsd-mailx xz-utils fakeroot hexedit squashfs-tools rsync locales python3 debianutils util-linux htop unattended-upgrades less ncdu zpaq inotify-tools mailhandler gpg openssh-client strace reportbug) for(liblua5.1-0 libcwidget4)
+libglib2.0-data auto for_manual(unattended-upgrades mc) for(libglib2.0-0)
+media-types auto for_manual(apparmor rsync python3 unattended-upgrades mc reportbug) for(python3.9 libpython3.9-stdlib)
+mime-support auto for_manual(mc apparmor rsync python3 unattended-upgrades reportbug) for(mc python3.9 libpython3.9-stdlib)
+p7zip-full auto for_manual(atool) for(atool p7zip)
+perl auto for_manual(rsync unattended-upgrades aptitude htop lsof openssh-client less wget apparmor gpg screen locales nano bzip2 vim-tiny info xz-utils strace ltrace psmisc mc atool chrony anacron tzdata util-linux debianutils hexedit elinks bsd-mailx mailhandler inotify-tools zpaq ncdu squashfs-tools fakeroot python3 reportbug) for(adduser debconf lsof perl-base mc perl-modules-5.32)
+unzip auto for_manual(mc atool) for(mc atool zip)
+xauth auto for_manual(rsync openssh-client) for(openssh-client)
+zip auto for_manual(mc atool) for(mc unzip atool)

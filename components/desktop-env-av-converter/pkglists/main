@@ -1,0 +1,3 @@
+qwinff manual
+libsox-fmt-alsa auto for_manual(qwinff) for(sox libsox3)
+ocl-icd-libopencl1 auto for_manual(qwinff) for(libavutil56 libavfilter7)

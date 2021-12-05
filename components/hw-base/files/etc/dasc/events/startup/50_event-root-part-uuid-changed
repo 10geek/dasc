@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+last_uuid_file=/var/local/lib/dasc/root-part-last-uuid
+current_uuid=$(findmnt -fnoUUID /) || exit
+{
+	[ -e "$last_uuid_file" ] && {
+		last_uuid=$(cat "$last_uuid_file") || exit
+	} && [ ":$last_uuid" = ":$current_uuid" ]
+} || {
+	run-parts --report /etc/dasc/events/root-part-uuid-changed &&
+	printf %s\\n "$current_uuid" > "$last_uuid_file.new" &&
+	mv -f "$last_uuid_file.new" "$last_uuid_file"
+}

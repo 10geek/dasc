@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Generating files from macro files
+#\............................................................................./
+find "$PREPDIR" -type f -name '*.awm' -exec sh -c '{
+	case $0 in "$PREPDIR/etc/debcomp/userconf"/*) exit; esac
+	awkmacro "$0" > "${0%.*}" &&
+	rm -f "$0"
+} || kill -INT "$PPID"' {} \; || exit
+
+#/*****************************************************************************\
+# Changing permissions
+#\............................................................................./
+find \
+	"$PREPDIR/etc/dasc/events" \
+	-type f -exec sh -c 'chmod +x "$0" || kill -INT "$PPID"' {} \; || exit

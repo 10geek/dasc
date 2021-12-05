@@ -1,0 +1,4 @@
+name=System / "proposed-updates" repository
+name[ru]=Система / Репозиторий "proposed-updates"
+description=A repository containing updated versions of packages that will be added to the next Debian release
+description[ru]=Репозиторий, содержащий обновленные версии пакетов, которые будут добавлены в следующий выпуск Debian

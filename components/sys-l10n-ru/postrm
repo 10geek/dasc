@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+
+unset -v debconf_selections_locales
+[ -z "$VARFILE" ] || . "$VARFILE" || exit
+
+
+#/*****************************************************************************\
+# Setting old debconf selections of the `locales` package and reconfiguring it
+#\............................................................................./
+[ -z "$debconf_selections_locales" ] || {
+	printf %s\\n "$debconf_selections_locales" | debconf-set-selections &&
+	dpkg-reconfigure locales
+} || exit

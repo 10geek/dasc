@@ -1,0 +1,13 @@
+name=Desktop environment / Video and audio player (smplayer, mpv)
+name[ru]=Окружение рабочего стола / Проигрыватель видео и аудио (smplayer, mpv)
+
+depends/desktop-env
+after/desktop-env
+
+conf/open_video_with_mpv/type=boolean
+conf/open_video_with_mpv/name=Use mpv instead of smplayer as the default application for opening video
+conf/open_video_with_mpv/name[ru]=Использовать mpv вместо smplayer в качестве приложения по умолчанию для открытия видео
+
+conf/open_audio_with_mpv/type=boolean
+conf/open_audio_with_mpv/name=Use mpv instead of smplayer as the default application for opening audio
+conf/open_audio_with_mpv/name[ru]=Использовать mpv вместо smplayer в качестве приложения по умолчанию для открытия аудио

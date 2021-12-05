@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Hybrid sleep
+Name[ru]=Гибридный спящий режим
+Comment=
+Exec=gsesctl hybrid-sleep
+Icon=system-suspend-hibernate
+Path=
+Terminal=false
+StartupNotify=false

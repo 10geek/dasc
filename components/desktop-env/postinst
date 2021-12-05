@@ -1,0 +1,42 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Saving current alternatives and setting new ones
+#\............................................................................./
+alternative_x_cursor_theme_value=$(update-alternatives --query x-cursor-theme) || exit
+alternative_x_cursor_theme_status=$(
+	printf %s\\n "$alternative_x_cursor_theme_value" |
+	LC_ALL=C awk '{ if(sub(/^Status:[\t ]*/, "")) { print $0; exit } }'
+)
+alternative_x_cursor_theme_value=$(
+	printf %s\\n "$alternative_x_cursor_theme_value" |
+	LC_ALL=C awk '{ if(sub(/^Value:[\t ]*/, "")) { print $0; exit } }'
+)
+{
+	[ -n "$alternative_x_cursor_theme_status" ] &&
+	[ -n "$alternative_x_cursor_theme_value" ] &&
+	debcomp setvar alternative_x_cursor_theme_status "$alternative_x_cursor_theme_status" &&
+	debcomp setvar alternative_x_cursor_theme_value "$alternative_x_cursor_theme_value" &&
+	update-alternatives --set x-cursor-theme /usr/share/icons/DMZ-White/cursor.theme
+} || exit 1
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+systemctl daemon-reload || exit
+
+#/*****************************************************************************\
+# Start LightDM if an SSH or pseudo-terminal is used
+#\............................................................................./
+start_lightdm=0
+if [ -n "$SSH_TTY" ]; then
+	start_lightdm=1
+else case $(tty <&2) in /dev/pts/*)
+	start_lightdm=1
+esac; fi
+[ $start_lightdm -eq 1 ] && systemctl start lightdm.service
+true
+
+debcomp log \
+	'if the current installation is the initial one, it is strongly recommended to restart the system for the correct functioning of the desktop environment' \
+	'ru:если текущая установка является первоначальной, то настоятельно рекомендуется выполнить перезапуск системы для корректной работы окружения рабочего стола'

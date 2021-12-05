@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+
+[ $# -eq 0 ] && {
+	printf %s\\n "${0##*/}: no arguments passed" >&2
+	exit 1
+}
+
+USER_ID=$(id -u) || exit 1
+
+[ ":$USER_ID" = :0 ] || {
+	pkexec env \
+		DISPLAY="$DISPLAY" \
+		XAUTHORITY="$XAUTHORITY" \
+		"$0" "$@"
+	exit
+}
+
+exec "$@"

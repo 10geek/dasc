@@ -1,0 +1,5 @@
+name=Desktop environment / Russian localization
+name[ru]=Окружение рабочего стола / Русская локализация
+
+depends/desktop-env
+depends/sys-l10n-ru

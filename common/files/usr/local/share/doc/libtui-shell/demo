@@ -1,0 +1,350 @@
+#!/usr/bin/env sh
+. /usr/local/share/shell/tui.sh || exit 1
+
+SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
+
+eval "register_signal_handler() { trap 'EXIT_CODE=\$?; trap '\\'\\'' \$SIGNALS; signal_handler EXIT' EXIT;$(
+	awk -- 'BEGIN { for(i = 1; i < ARGC; i++) print "trap \47trap \47\134\47\134\47\47 $SIGNALS; signal_handler " ARGV[i] "; register_signal_handler\47 " ARGV[i] }' $SIGNALS
+);}"
+
+signal_handler() {
+	case $1 in
+	EXIT) ui_mode reset;;
+	*) exit;;
+	esac
+}
+register_signal_handler
+
+
+unset \
+DEMO_MENU_MAIN_CURSOR_POS \
+DEMO_MENU_EXAMPLES_CURSOR_POS
+DEMO_INPUT=demo
+DEMO_PASSWORD=password
+DEMO_MULTISELECT='item1
+item2'
+DEMO_CHECKBOX1=1
+DEMO_CHECKBOX2=0
+while :; do
+	ui 'libtui-shell demo' 'Shell library for creating text-based user interfaces' '
+		bKeybindings
+			vkeybindings
+		bExamples
+			vexamples
+		bui_input() demo
+			vui_input
+		t
+		qExit' "$DEMO_MENU_MAIN_CURSOR_POS" || exit 0
+	DEMO_MENU_MAIN_CURSOR_POS=$UI_MENU_CURSOR_POS
+	case $UI_CHOICE in
+	keybindings)
+		ui 'Keybindings' '' '
+			hNavigation
+			tUp                     Move cursor one line up
+			tDown                   Move cursor one line down
+			tPageUp                 Move cursor half a page up
+			tPageDown               Move cursor half a page down
+			tHome                   Move cursor to the top
+			tEnd                    Move cursor to the bottom
+			tShift+Tab, Ctrl+Up     Move cursor to the previous UI element
+			tTab, Ctrl+Down         Move cursor to the next UI element
+			tReturn, Space          Select UI element
+			t/, Ctrl+F              Edit search field
+			tShift+N, Shift+F3      Search backward
+			tN, F3                  Search forward
+			tQ, Backspace, Esc Esc  Exit
+			t
+			h
+			hText field editing
+			tLeft, Ctrl+B           Move cursor left
+			tRight, Ctrl+F          Move cursor right
+			tCtrl+Left              Move cursor one word to the left
+			tCtrl+Right             Move cursor one word to the right
+			tHome, Ctrl+A           Move cursor to the beginning of the line
+			tEnd, Ctrl+E            Move cursor to the end of the line
+			tBackspace, Ctrl+H      Delete character before cursor
+			tDelete,Ctrl+D          Delete character after cursor
+			tCtrl+W                 Delete word before cursor
+			tCtrl+Delete            Delete word after cursor
+			tCtrl+U                 Delete all characters before cursor
+			tCtrl+K                 Delete all characters after cursor
+			tReturn                 Save editing
+			tCtrl+/, Esc Esc        Cancel editing
+			tUp, Down               Returns the previous search value (only in the search field)'
+		;;
+	examples)
+		while :; do
+			ui 'Examples' '' '
+				bAll UI elements
+					vall_ui
+				bDynamic UI
+					vdynamic_ui
+				bFile selection
+					vfile_selection
+				bDescription only
+					vdescription_only' "$DEMO_MENU_EXAMPLES_CURSOR_POS" || break
+				DEMO_MENU_EXAMPLES_CURSOR_POS=$UI_MENU_CURSOR_POS
+			case $UI_CHOICE in
+			all_ui)
+				ui 'All UI elements' 'This is demo of all user interface elements' '
+					hText
+					tLorem ipsum dolor sit amet, consectetuer adipiscing elit. Nam cursus. Morbi ut mi. Nullam enim leo, egestas id, condimentum at, laoreet mattis, massa. Sed eleifend nonummy diam.
+					tPraesent mauris ante, elementum et, bibendum at, posuere sit amet, nibh. Duis tincidunt lectus quis dui viverra vestibulum.
+					tSuspendisse vulputate aliquam dui. Nulla elementum dui ut augue.
+					tAliquam vehicula mi at mauris.
+					h
+					hInput
+					iDEMO_INPUT:Enter text here:
+						s
+					t
+					hPassword
+					pDEMO_PASSWORD:Enter password here:
+					t
+					hMultiselect
+					mDEMO_MULTISELECT:Item 1
+						vitem1
+						dItem 1
+					mDEMO_MULTISELECT:Item 2
+						vitem2
+						dItem 2
+					mDEMO_MULTISELECT:Item 3
+						vitem3
+						dItem 3
+					mDEMO_MULTISELECT:Item 4
+						vitem4
+						dItem 4
+					t
+					hCheckbox
+					cDEMO_CHECKBOX1:Checkbox 1
+						dCheckbox 1
+					cDEMO_CHECKBOX2:Checkbox 2
+						dCheckbox 2
+					t
+					hButton
+					qBack'
+				;;
+			dynamic_ui)
+				unset DEMO_LABEL DEMO_VALUE
+				DEMO_DYNAMIC_MULTISELECT='mDEMO_MULTISELECT:Item 1
+					vitem1
+				mDEMO_MULTISELECT:Item 2
+					vitem2
+				mDEMO_MULTISELECT:Item 3
+					vitem3
+				mDEMO_MULTISELECT:Item 4
+					vitem4'
+				ui_callback() {
+					[ "$UI_EVENT" = select ] && {
+						case $UI_CHOICE in
+						select_all)
+							unset UI_EVENT
+							DEMO_MULTISELECT=$(printf %s "$DEMO_DYNAMIC_MULTISELECT" | sed -n 's/^[ \t]*v//p')
+							;;
+						clear)
+							unset UI_EVENT DEMO_MULTISELECT
+							;;
+						remove_selected)
+							DEMO_DYNAMIC_MULTISELECT=$(printf %s\\n "$DEMO_DYNAMIC_MULTISELECT" | awk -- 'BEGIN {
+								ARGC = 1
+								selected_count = split(ARGV[1], tmp, "\n")
+								for(i = 1; i <= selected_count; i++) selected[tmp[i]] = ""
+								i = 0
+							}
+							$0 !~ /^[ \t]*$/ {
+								i++
+								if(i % 2) label = $0
+								else {
+									sub(/^[ \t]*v/, "")
+									if(!($0 in selected)) print label "\nv" $0
+								}
+							}' "$DEMO_MULTISELECT")
+							unset UI_EVENT DEMO_MULTISELECT
+							;;
+						add)
+							unset UI_EVENT
+							[ -n "$DEMO_LABEL" ] && [ -n "$DEMO_VALUE" ] &&
+							printf %s\\n "$DEMO_DYNAMIC_MULTISELECT" |
+							awk -- 'BEGIN { ARGC = 1 } { sub(/^[ \t]*v/, ""); if($0 == ARGV[1]) exit 1 }' "$DEMO_VALUE" && {
+								DEMO_DYNAMIC_MULTISELECT=$DEMO_DYNAMIC_MULTISELECT"
+								mDEMO_MULTISELECT:$DEMO_LABEL
+								v$DEMO_VALUE"
+								UI_MENU_CURSOR_POS=$((UI_MENU_CURSOR_POS + 1))
+							}
+							;;
+						esac
+					}
+					UI_MENU='
+						'"$DEMO_DYNAMIC_MULTISELECT"'
+						bSelect all
+							vselect_all
+						bClear
+							vclear
+						bRemove selected
+							vremove_selected
+						t
+						iDEMO_LABEL:Label
+						iDEMO_VALUE:Value
+						b+ Add
+							vadd'
+					UI_DESCRIPTION="$(printf "%s$([ -n "$DEMO_MULTISELECT" ] && printf %s \\n)" "$DEMO_MULTISELECT" | wc -l) items selected"
+				}
+				ui 'Dynamic UI'
+				;;
+			file_selection)
+				scandir() {
+					[ $# -eq 2 ] && expr "$2" : '[A-Za-z_][A-Za-z0-9_]*$' > /dev/null && {
+						eval "$2=$(printf %s "$1" | sed 's/'\''/'\''\\'\'\''/g; s/^/'\''/; s/$/'\''/; s/\//\n/g')"
+						return $?
+					}
+					if cd -- "$1"; then
+						shift; unset FIND_PRE_ARGS
+						[ "$1" = -L ] && { FIND_PRE_ARGS=-L; shift; }
+						find $FIND_PRE_ARGS . -path './*' -prune "$@"
+						echo $?
+					else echo 1; fi | awk 'BEGIN { exit_code = 1 } {
+						if(NR != 1) {
+							if(sub(/^.*\//, "", last_line)) { if(NR != 2) print filename; filename = last_line }
+							else filename = filename "/" last_line
+						}
+						last_line = $0
+					} END { if(NR) { if(NR > 1) print filename; exit_code = $0 } exit exit_code }'
+				}
+				ui_select_file_callback() { :; }
+				ui_select_file() {
+					unset UI_MENU_CURSOR_POS UI_SELECT_FILE_JUMP_TO
+					UI_SELECT_FILE_EXIT=0
+					UI_SELECT_FILE_OLDPWD=$PWD
+					[ -n "$3" ] && cd -- "$3" 2>/dev/null
+					while :; do
+						ui_callback() {
+							if [ -z "$UI_EVENT" ] || [ "$UI_EVENT" = exit ]; then
+								case $UI_INPUT in
+								'27 O D'|'127') UI_EVENT=select; UI_CHOICE=..;;
+								'27 O C') UI_ACTION=select;;
+								'32') UI_SELECT_FILE_EXIT=1;;
+								esac
+							elif [ "$UI_EVENT:$UI_VAR_NAME" = edit_complete:PWD ]; then
+								printf '\33[?25l'
+								unset UI_EVENT
+								cd -- "$UI_VALUE_L$UI_VALUE_R" 2>/dev/null && {
+									UI_EVENT=select
+									unset UI_CHOICE
+								}
+							fi
+						}
+						ui "$1" "$2" "iPWD
+							$(
+							[ "$PWD" = / ] || printf 'b..\ns\n'
+							scandir . | while read -r ESCAPED_FILENAME; do
+								scandir "$ESCAPED_FILENAME" FILENAME
+								[ -d "$FILENAME" ]; IS_FILE=$?
+								! [ -h "$FILENAME" ]; IS_LINK=$?
+								printf %s\\n "$ESCAPED_FILENAME$IS_FILE$IS_LINK"
+							done | LC_ALL=C sort |
+							awk -- 'BEGIN {
+								ARGC = 1; selected_dir = 0; selected_file = 0
+								dirs_count = 0; files_count = 0
+								sub(/.*\//, "", ARGV[1])
+								gsub(/\n/, "/", ARGV[1])
+							} {
+								sub(/^\.\//, "")
+								is_dir = $0 ~ /0.$/; is_link = $0 ~ /1$/
+								sub(/..$/, "")
+								if($0 == ARGV[1]) {
+									if(is_dir) selected_dir = dirs_count + 1
+									else selected_file = files_count + 1
+								}
+								button_label = $0; gsub(/\//, "\357\277\275", button_label)
+								if(is_dir) dirs[++dirs_count] = "b" (is_link ? "~" : "/") button_label "\nv" $0
+								else files[++files_count] = "b" (is_link ? "@" : " ") button_label "\nv" $0
+							} END {
+								for(i = 1; i <= dirs_count; i++) {
+									print dirs[i]
+									if(i == 1 || i == selected_dir) print "s"
+								}
+								for(i = 1; i <= files_count; i++) {
+									print files[i]
+									if((!dirs_count && i == 1) || i == selected_file) print "s"
+								}
+							}' "$UI_SELECT_FILE_JUMP_TO"
+						)" "$UI_MENU_CURSOR_POS" || break
+						unset UI_SELECT_FILE_JUMP_TO
+						if [ "$UI_CHOICE" = .. ]; then
+							[ "$PWD" = / ] && continue
+							unset UI_MENU_CURSOR_POS
+							UI_SELECT_FILE_JUMP_TO=$PWD
+							cd ..
+						elif [ -n "$UI_CHOICE" ]; then
+							scandir "$UI_CHOICE" UI_CHOICE
+							if [ "$PWD" = / ]; then
+								UI_CHOICE=/$UI_CHOICE
+							else
+								UI_CHOICE=$PWD/$UI_CHOICE
+							fi
+							{ [ -f "$UI_CHOICE" ] || [ $UI_SELECT_FILE_EXIT -eq 1 ]; } &&
+								ui_select_file_callback "$@" && break
+							UI_SELECT_FILE_EXIT=0
+							[ -d "$UI_CHOICE" ] &&
+								cd "$UI_CHOICE" 2>/dev/null && unset UI_MENU_CURSOR_POS
+						fi
+					done
+					cd "$UI_SELECT_FILE_OLDPWD"
+					ui_select_file_callback() { :; }
+					[ "$UI_EVENT" != exit ]
+				}
+
+				unset DEMO_DIR_PATH DEMO_FILE_PATH DEMO_XML_FILE_PATH
+				while :; do
+					ui 'File selection' '' '
+						iDEMO_DIR_PATH:Path to directory:
+						bSelect directory
+							vselect_dir
+						t
+						iDEMO_FILE_PATH:Path to file:
+						bSelect file
+							vselect_file
+						t
+						iDEMO_XML_FILE_PATH:Path to XML file:
+						bSelect file
+							vselect_xml_file' || break
+					case $UI_CHOICE in
+					select_dir)
+						ui_select_file_callback() {
+							[ -d "$UI_CHOICE" ]
+						}
+						ui_select_file 'Select directory' 'Press "space" to select' "$(dirname -- "$DEMO_DIR_PATH")" &&
+							DEMO_DIR_PATH=$UI_CHOICE
+						;;
+					select_file)
+						ui_select_file_callback() {
+							[ -f "$UI_CHOICE" ]
+						}
+						ui_select_file 'Select file' '' "$(dirname -- "$DEMO_FILE_PATH")" &&
+							DEMO_FILE_PATH=$UI_CHOICE
+						;;
+					select_xml_file)
+						ui_select_file_callback() {
+							[ -f "$UI_CHOICE" ] && expr "$UI_CHOICE" : '.*\.\(xml\|XML\)$' > /dev/null
+						}
+						ui_select_file 'Select *.xml file' '' "$(dirname -- "$DEMO_XML_FILE_PATH")" &&
+							DEMO_XML_FILE_PATH=$UI_CHOICE
+						;;
+					esac
+				done
+				;;
+			description_only)
+				ui 'Description only' "$(grep --help 2>&1)"
+				;;
+			esac
+		done
+		;;
+	ui_input)
+		printf %s\\n 'Press "q" for interrupt'
+		while :; do
+			ui_input
+			[ "$UI_INPUT" = q ] && break
+			printf %s\\n "UI_INPUT='$UI_INPUT'"
+		done
+		;;
+	esac
+done

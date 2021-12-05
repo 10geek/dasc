@@ -1,0 +1,7 @@
+[preglobal]
+
+[postglobal]
+
+[filtering]
+enabled rulename "" all execute "/usr/local/share/dasc/libexec/desktop/notify-new-mail claws-mail %f %t %s \"$(sed 's/r$//; 1,/^$/d' %F | head -n5)\""
+

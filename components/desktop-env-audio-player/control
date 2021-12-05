@@ -1,0 +1,5 @@
+name=Desktop environment / Audio player (audacious)
+name[ru]=Окружение рабочего стола / Аудиопроигрыватель (audacious)
+
+depends/desktop-env
+after/desktop-env

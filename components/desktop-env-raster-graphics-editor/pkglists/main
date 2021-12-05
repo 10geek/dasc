@@ -1,0 +1,15 @@
+gimp manual for_manual(gimp-plugin-registry gimp-gap gimp-gmic gimp-gutenprint gimp-texturize)
+gimp-dds manual
+gimp-gap manual
+gimp-gmic manual for_manual(gimp-plugin-registry) for(gimp-plugin-registry)
+gimp-gutenprint manual
+gimp-lensfun manual
+gimp-plugin-registry manual
+gimp-texturize manual
+adwaita-icon-theme auto for_manual(gimp-plugin-registry gimp-gap gimp-gmic gimp-dds gimp-gutenprint gimp gimp-texturize gimp-lensfun) for(libgtk2.0-0)
+gsfonts auto for_manual(gimp-plugin-registry gimp-gmic gimp gimp-gutenprint gimp-texturize gimp-gap) for(libgraphicsmagick-q16-3 graphviz libwmf0.2-7)
+gutenprint-locales auto for_manual(gimp-gutenprint) for(libgutenprint-common libgutenprintui2-2 gimp-gutenprint libgutenprint9)
+libblas3 auto for_manual(gimp-plugin-registry gimp-gap gimp-gmic gimp-dds gimp-gutenprint gimp gimp-texturize gimp-lensfun) for(libcholmod3 liblapack3 libumfpack5 libarpack2 libsuperlu5 libarmadillo10)
+libgcc-s1 auto for_manual(gimp-plugin-registry gimp-gap gimp-gmic gimp-dds gimp-gutenprint gimp gimp-texturize gimp-lensfun) for(libann0 libopenmpt0 libsnappy1v5)
+liblapack3 auto for_manual(gimp-plugin-registry gimp-gap gimp-gmic gimp-dds gimp-gutenprint gimp gimp-texturize gimp-lensfun) for(libcholmod3 libarpack2 libarmadillo10)
+ocl-icd-libopencl1 auto for_manual(gimp-plugin-registry gimp-gap gimp-gmic gimp-dds gimp-gutenprint gimp gimp-texturize gimp-lensfun) for(libavutil56)

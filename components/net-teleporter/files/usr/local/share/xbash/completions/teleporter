@@ -1,0 +1,35 @@
+xbash_comp_teleporter() {
+	local context protocols IFS
+	protocols='sftp ssh ftp smb rdp vnc vnci'
+	if xbash_parse_comp_argv context '[lufavh]' '[ipod]'
+	then case ${context[2]} in
+	i|d) return 2;;
+	p)
+		COMP_VALUES=("$(
+			xbash_istartswith "$COMP_VALUE" $protocols | xbash_menu
+		)") || return 1
+		;;
+	*) xbash_compspecial_bash_completion;;
+	esac
+	elif [ ${context[1]} -eq 1 ]; then
+		xbash_compspecial_parse_help || return 1
+	elif [ ${context[0]} -eq 0 ]; then
+		COMP_VALUES=("$(
+			{
+				[ -d "$HOME/.teleporter/conf" ] && cd -- "$HOME/.teleporter/conf" &&
+				find -L . -path './*' -prune -type f | LC_ALL=C sort
+			} | xbash_awk '{
+				$0 = substr($0, 3)
+				if(xbash_startswith($0, ARGV[1])) print $0
+			} END {
+				protocols_len = split(ARGV[2], protocols)
+				for(i = 1; i <= protocols_len; i++)
+					if(xbash_startswith(protocols[i], ARGV[1]))
+						print protocols[i] "://"
+			}' "$COMP_VALUE" "$protocols" | xbash_menu
+		)") || return 1
+		case ${COMP_VALUES[0]} in
+		*//) COMP_NO_TRAILING_SPACE=1;;
+		esac
+	else return 1; fi
+}

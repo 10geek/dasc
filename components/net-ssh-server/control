@@ -1,0 +1,25 @@
+name=Network / SSH server
+name[ru]=Сеть / Сервер SSH
+
+conf/port/type=integer
+conf/port/name=Server port
+conf/port/name[ru]=Порт сервера
+conf/port/default=22
+conf/port/min=1
+conf/port/max=65535
+
+conf/permit_root_login/type=select
+conf/permit_root_login/name=Login to the system of the "root" user
+conf/permit_root_login/name[ru]=Вход в систему пользователя "root"
+conf/permit_root_login/default=prohibit-password
+conf/permit_root_login/options/yes/name=Allow
+conf/permit_root_login/options/yes/name[ru]=Разрешить
+conf/permit_root_login/options/no/name=Deny
+conf/permit_root_login/options/no/name[ru]=Запретить
+conf/permit_root_login/options/prohibit-password/name=Allow only public key authentication
+conf/permit_root_login/options/prohibit-password/name[ru]=Разрешить только аутентификацию с открытым ключом
+
+conf/password_auth/type=boolean
+conf/password_auth/name=Allow password authentication
+conf/password_auth/name[ru]=Разрешить аутентификацию по паролю
+conf/password_auth/default=1

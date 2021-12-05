@@ -1,0 +1,4 @@
+mtr-tiny manual
+nmap manual for(nmap-common)
+tshark manual for(wireshark-common)
+libblas3 auto for_manual(nmap) for(liblinear4)

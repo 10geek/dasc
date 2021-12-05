@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+
+debcomp fs-diversify "$PREPDIR" || exit
+
+#/*****************************************************************************\
+# Changing permissions
+#\............................................................................./
+find \
+	"$PREPDIR/etc/debcomp/userconf/desktop/postinst.d" \
+	-type f -exec sh -c 'chmod +x "$0" || kill -INT "$PPID"' {} \; || exit

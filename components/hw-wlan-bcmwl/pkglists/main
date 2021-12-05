@@ -1,0 +1,4 @@
+broadcom-sta-dkms manual
+gcc auto for_manual(broadcom-sta-dkms) for(dkms dpkg-dev libdpkg-perl)
+kmod auto for_manual(broadcom-sta-dkms) for(dkms)
+make auto for_manual(broadcom-sta-dkms) for(perl dkms gcc)

@@ -1,0 +1,15 @@
+This directory is a special component that contains a system-specific
+configuration. This component will be installed with next configuration
+deployment after all other components. For example, it may contain a list of
+packages that are necessary for the hardware to work, which should not be
+deleted. For more details, see https://github.com/10geek/debcomp.
+
+File in the `pkglists` directory contains a list of packages that should be
+installed at the next configuration deployment. This file should be in the
+following format (recommended packages are marked as auto):
+
+htop manual
+mc manual
+nano manual
+bzip2 auto for_manual(mc) for(mc)
+zip auto for_manual(mc) for(mc)

@@ -1,0 +1,5 @@
+/etc/dasc/** r,
+/etc/dasc/events/*/** rix,
+/usr/local/*/dasc/** rm,
+/usr/local/share/dasc/libexec/** rix,
+/var/local/*/dasc/** rwk,

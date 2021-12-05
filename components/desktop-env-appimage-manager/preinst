@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+
+debcomp fs-diversify "$PREPDIR" || exit
+
+#/*****************************************************************************\
+# Changing permissions
+#\............................................................................./
+find \
+	"$PREPDIR/usr/local/bin" \
+	-type f -exec sh -c 'chmod +x "$0" || kill -INT "$PPID"' {} \; || exit
+chmod 700 "$PREPDIR/var/local/lib/appimage/tmp" || exit

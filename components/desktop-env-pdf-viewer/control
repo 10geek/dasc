@@ -1,0 +1,5 @@
+name=Desktop environment / Document and e-book viewer (qpdfview)
+name[ru]=Окружение рабочего стола / Просмотрщик документов и электронных книг (qpdfview)
+
+depends/desktop-env
+after/desktop-env

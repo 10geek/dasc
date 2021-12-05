@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<channel name="xfce4-keyboard-shortcuts" version="1.0">
+  <property name="commands" type="empty">
+    <property name="custom" type="empty">
+      <property name="&lt;Alt&gt;F2" type="string" value="xfce4-popup-whiskermenu">
+        <property name="startup-notify" type="bool" value="true"/>
+      </property>
+      <property name="&lt;Primary&gt;&lt;Alt&gt;Delete" type="string" value="gsesctl">
+        <property name="startup-notify" type="bool" value="true"/>
+      </property>
+      <property name="&lt;Primary&gt;&lt;Alt&gt;l" type="string" value="gsesctl switch-user">
+        <property name="startup-notify" type="bool" value="true"/>
+      </property>
+      <property name="&lt;Primary&gt;Escape" type="string" value="sh -c &apos;gseskillall gnome-system-monitor || exec gnome-system-monitor&apos;">
+        <property name="startup-notify" type="bool" value="true"/>
+      </property>
+      <property name="Print" type="string" value="screengrab">
+        <property name="startup-notify" type="bool" value="true"/>
+      </property>
+      <property name="XF86Display" type="string" value="xfce4-display-settings --minimal">
+        <property name="startup-notify" type="bool" value="true"/>
+      </property>
+      <property name="XF86Mail" type="string" value="exo-open --launch MailReader">
+        <property name="startup-notify" type="bool" value="true"/>
+      </property>
+      <property name="XF86WWW" type="string" value="exo-open --launch WebBrowser">
+        <property name="startup-notify" type="bool" value="true"/>
+      </property>
+      <property name="override" type="bool" value="true"/>
+    </property>
+  </property>
+  <property name="providers" type="array">
+    <value type="string" value="commands"/>
+  </property>
+</channel>

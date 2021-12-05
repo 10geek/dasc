@@ -1,0 +1,106 @@
+#!/usr/bin/env sh
+
+# TODO: replace with extsh library equivalent
+lang=$(locale | LC_ALL=C awk '{
+	if(!sub(/^[\t ]*LC_MESSAGES=/, "")) next
+	if(sub(/^"/, "")) {
+		if(!sub(/"$/, "")) next
+	} else if(sub(/^\47/, "")) {
+		if(!sub(/\47$/, "")) next
+	}
+	sub(/@.*/, "")
+	if(tolower($0) !~ /^[A-Za-z]+(_[A-Za-z]+)?\.utf-?8$/) next
+	sub(/\..*/, "")
+	print $0
+	exit
+}')
+
+#/*****************************************************************************\
+# Defining awkmacro environment variables
+#\............................................................................./
+export \
+	AWM_LANG_FULL="$lang" \
+	AWM_LANG="${lang%_*}" || exit
+
+#/*****************************************************************************\
+# Generating files from macro files
+#\............................................................................./
+{
+	cd "$CONF_PATH/skel" &&
+	find . -type f -name '*.awm' -exec sh -c 'path=${0#.}; path=${path%.*}; {
+		{ ! [ -e "$HOME$path" ] || debcomp remove "$HOME$path"; } &&
+		awkmacro "$HOME$path.awm" > "$HOME$path" &&
+		rm -f "$HOME$path.awm"
+	} || kill -INT "$PPID"' {} \;
+} || exit
+
+#/*****************************************************************************\
+# Generating dconf key file from parts located in the dconf.d directory
+#\............................................................................./
+! [ -d "$CONF_PATH/dconf.d" ] || {
+	for file in "$CONF_PATH/dconf.d"/*; do
+		[ -f "$file" ] || continue
+		echo || exit
+		case $file in
+		*.awm)
+			awkmacro "$file";;
+		*)
+			cat "$file";;
+		esac || exit
+	done >> ~/.config/dconf/user.txt
+} || exit
+
+#/*****************************************************************************\
+# Generating mimeapps.list file from parts located in the mimeapps.d directory
+#\............................................................................./
+! [ -d "$CONF_PATH/mimeapps.d" ] || {
+	for file in "$CONF_PATH/mimeapps.d"/*; do
+		[ -f "$file" ] || continue
+		printf \\n%s\\n "# $file" || exit
+		case $file in
+		*.awm)
+			awkmacro "$file";;
+		*)
+			cat "$file";;
+		esac || exit
+	done >> ~/.config/mimeapps.list
+} || exit
+
+! [ -e ~/.config/mimeapps.list ] || {
+	file_contents=$(cat ~/.config/mimeapps.list) && {
+		printf %s\\n '[Added Associations]' "$file_contents"
+		printf \\n\\n
+		printf %s\\n '[Default Applications]' "$file_contents"
+	} > ~/.config/mimeapps.list
+} || exit
+
+#/*****************************************************************************\
+# Creating desktop directories
+#\............................................................................./
+for dir in \
+	DESKTOP \
+	DOCUMENTS \
+	DOWNLOAD \
+	MUSIC \
+	PICTURES \
+	PUBLICSHARE \
+	TEMPLATES \
+	VIDEOS
+do
+	xdg_dir_path=$(xdg-user-dir "$dir") || exit
+	[ -e "$xdg_dir_path" ] && continue
+	mkdir -p "$xdg_dir_path" || exit
+done
+
+#/*****************************************************************************\
+# Changing permissions
+#\............................................................................./
+{
+	chmod +x \
+		~/.config/conky/conky-genconf &&
+	chmod 700 \
+		~/.local/share/keyrings &&
+	chmod 600 \
+		~/.dillo/cookiesrc \
+		~/.local/share/keyrings/default.keyring
+} || exit

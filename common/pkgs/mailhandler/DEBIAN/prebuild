@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+
+conflicts_pkgs=$(
+	dpkg-query -W -f='${Package},${Provides}\n' |
+	LC_ALL=C awk -F, -- '{
+		gsub(/(\([^)]+\)|\[[^]]+\]|[\t ]+)/, "")
+		gsub(/\|/, ",")
+		for(i = 2; i <= NF; i++) {
+			if($i == "mail-transport-agent") {
+				print $1; next
+			}
+		}
+	}'
+)
+[ -n "$conflicts_pkgs" ] && {
+	debcomp log 'removing conflicting packages ...' 'ru:удаление конфликтующих пакетов ...'
+	debcomp wait-dpkg-lock-release || exit
+	apt-get -y purge $conflicts_pkgs || exit
+}
+
+mkdir -p \
+	"$PREPDIR/usr/lib" \
+	"$PREPDIR/usr/sbin" \
+	"$PREPDIR/var/lib/mailhandler" \
+	"$PREPDIR/var/log/mailhandler" &&
+chmod +x "$PREPDIR/usr/bin/mailhandler" &&
+ln -s ../bin/mailhandler "$PREPDIR/usr/lib/sendmail" &&
+ln -s ../bin/mailhandler "$PREPDIR/usr/sbin/sendmail"

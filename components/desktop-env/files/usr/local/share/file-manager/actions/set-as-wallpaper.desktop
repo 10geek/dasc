@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Action
+Name=Set as wallpaper
+Name[ru]=Сделать фоном рабочего стола
+Icon=preferences-desktop-wallpaper
+Profiles=main
+
+[X-Action-Profile main]
+MimeTypes=image/*;
+Exec=pcmanfm -w %f
+SelectionCount=1

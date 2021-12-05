@@ -1,0 +1,131 @@
+#!/usr/bin/env sh
+#              _
+# awkmacro - a simple general-purpose macro processor that uses awk as a
+# macro language.
+#
+# Version: 1.0.0 (18/04/2021)
+#
+# Copyright (c) 2021 10geek
+#
+# Licensed under the MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+gen_awk_code() {
+	LC_ALL=C awk '
+	function print_escaped_awk_string(string,    tmpbuf, char, oct) {
+		while(match(string, /[^][ !\44-\46\50-\132\136-\176]/)) {
+			char = substr(string, RSTART, RLENGTH)
+			if(RSTART != 1) print substr(string, 1, RSTART - 1)
+			string = substr(string, RSTART + RLENGTH)
+			if(char == "\"") print "\\\""
+			else if(char == "\a") print "\\a"
+			else if(char == "\b") print "\\b"
+			else if(char == "\t") print "\\t"
+			else if(char == "\n") print "\\n"
+			else if(char == "\v") print "\\v"
+			else if(char == "\f") print "\\f"
+			else if(char == "\r") print "\\r"
+			else printf("\\%03o", ord[char])
+		}
+		print string
+	}
+	BEGIN {
+		ORS = ""
+		for(i = 1; i < 256; i++) ord[sprintf("%c", i)] = i
+		is_tag_opened = 0
+	} {
+		while(pos = index($0, is_tag_opened ? "?>" : "<?awk")) {
+			if(is_tag_opened) {
+				if(pos != 1) print substr($0, 1, pos - 1) "\n"
+				$0 = substr($0, pos + 2)
+			} else {
+				if(pos != 1) {
+					print "print \""
+					print_escaped_awk_string(substr($0, 1, pos - 1))
+					print "\"\n"
+				}
+				$0 = substr($0, pos + 5)
+			}
+			is_tag_opened = !is_tag_opened
+		}
+		if(is_tag_opened) print $0
+		else {
+			print "print \""
+			print_escaped_awk_string($0 "\n")
+			print "\""
+		}
+		print "\n"
+	}'
+}
+
+usage() {
+	cat <<- EOF
+	Usage: ${0##*/} [<options>] ... [<file>] [<arg>] ...
+
+	${0##*/} is a simple general-purpose macro processor that uses awk as a macro
+	language. Use the <?awk and ?> tags to start and stop interpreting the code
+	between them.
+
+	Options:
+	  -o             Output generated AWK code to stdout instead of executing it
+	  -v, --version  Output version information and exit
+	  -h, --help     Display this help and exit
+	EOF
+}
+
+
+program_version=1.0.0
+output_code_to_stdout=0
+
+case $1 in
+--help|-h) usage; exit 0;;
+--version|-v) printf %s\\n "$program_version"; exit 0;;
+*)
+	while getopts o OPT; do case $OPT in
+		o) output_code_to_stdout=1;;
+		?) exit 1;;
+	esac; done
+	;;
+esac
+shift $((OPTIND - 1))
+OPTIND=1
+
+case $output_code_to_stdout in
+0)
+	LC_ALL=C awk -f /dev/fd/3 -- "$@" 3<<- EOF
+	BEGIN {
+	ORS = ""
+	$(
+		case $# in
+		0) gen_awk_code;;
+		*) gen_awk_code < "$1";;
+		esac
+	)
+	}
+	EOF
+	;;
+1)
+	case $# in
+	0) gen_awk_code;;
+	*) gen_awk_code < "$1";;
+	esac
+	;;
+esac

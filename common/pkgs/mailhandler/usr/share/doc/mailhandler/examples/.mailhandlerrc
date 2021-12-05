@@ -1,0 +1,24 @@
+# For more information about available functions, see /usr/lib/mailhandler/00_base
+# For usage examples, see /usr/share/doc/mailhandler/examples/.mailhandlerrc
+
+process_mail() {
+	# If mbox size is less than or equal to 10 MB
+	du -c "$MAIL" "$MAILFILE" | awk 'END { exit $1 > 1024 * 10 }' && {
+		mail_send_mbox < "$MAILFILE" || return 1
+	}
+
+	#sudo -nu "$(getent group | LC_ALL=C awk -F: '$1 == "wheel" && $4 != "" { print $4; exit }')" /usr/sbin/sendmail < "$MAILFILE" || return 1
+	#su - "$(getent group | LC_ALL=C awk -F: '$1 == "wheel" && $4 != "" { print $4; exit }')" -s /bin/sh -c /usr/sbin/sendmail < "$MAILFILE" || return 1
+
+	#mail_save_to_file ~/mail '/%Y/%m/%d/%Hh-%Mm-%Ss' < "$MAILFILE" || return 1
+
+	#if is_mail_local; then
+	#	set_mail_header to admin@example.com < "$MAILFILE" | mail_send_msmtp username@ya.ru password smtp.yandex.ru 587 username@ya.ru || return 1
+	#else
+	#	mail_send_msmtp username@ya.ru password smtp.yandex.ru 587 username@ya.ru < "$MAILFILE" || return 1
+	#fi
+
+	#DISPLAY=:0 notify-send -a mailhandler -i mail-message "New mail: $(get_mail_header subject | head -n1)" "$(get_mail_body_text | head -n5)"
+
+	return 0
+}

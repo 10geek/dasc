@@ -1,0 +1,103 @@
+err() {
+	if [ $# -gt 1 ]; then
+		printf %s\\n "$0: $2" >&2
+	else
+		printf %s\\n "$0: $1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+err_pre_start() {
+	err 1 'an error occurred while performing actions before program execution'
+}
+err_post_start() {
+	err 1 'an error occurred while performing actions after program exits'
+}
+lock() {
+	(
+		trap '' $signals
+		{
+			mkdir -p "$lock_dir" &&
+			exec 9>"$lock_dir/$exec_name" &&
+			flock 9
+		} ||
+			err 1 "unable to get lock \`$lock_dir/$exec_name'"
+	)
+	is_lock_set=1
+}
+unlock() {
+	(
+		trap '' $signals
+		{
+			exec 9>&- &&
+			rm -f "$lock_dir/$exec_name"
+		} ||
+			err 1 "unable to release lock \`$lock_dir/$exec_name'"
+	)
+	is_lock_set=0
+}
+waitpid() {
+	while :; do
+		wait "$1" 2>/dev/null
+		__waitpid__retval=$?
+		sh -c 'trap '\'\'' '"$signals"'
+		ps -Ao ppid,pid | LC_ALL=C awk -- '\''
+			BEGIN { ARGC = 1; exit_code = 1 }
+			$2 == ARGV[2] { if($1 == ARGV[1]) exit_code = 0; exit }
+			END { exit exit_code }
+		'\'' "$PPID" "$0"' "$1" || break
+	done
+	wait "$1" 2>/dev/null
+	__waitpid__last_retval=$?
+	[ $__waitpid__last_retval -ne 127 ] && return $__waitpid__last_retval
+	return $__waitpid__retval
+}
+reset_signal_handlers() {
+	trap ' ' $signals
+}
+is_running() {
+	set -- "$(id -u)"
+	[ -z "$1" ] && return 1
+	! {
+		ps -U "$1" -o comm ||
+		printf %s\\n '' "$exec_name"
+	} | LC_ALL=C awk -- '
+		BEGIN { ARGC = 1; getline }
+		$1 == ARGV[1] { exit 1 }' "$exec_name"
+}
+
+
+unset -v exec_path
+signals='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
+exec_name=${0##*/}
+lock_dir=$HOME/.local/share/dasc/lock/app-wrapper
+is_lock_set=0
+exit_code=0
+
+old_pwd=$PWD
+cd -- "${0%/*}" || exit 1
+self_dir=$PWD
+cd "$old_pwd" || exit 1
+
+old_ifs=$IFS; IFS=:
+for exec_dir in $PATH; do
+	case $exec_dir in
+	"$self_dir"|"$HOME"|"$HOME"/*) continue;;
+	esac
+	[ -f "$exec_dir/$exec_name" ] && [ -x "$exec_dir/$exec_name" ] && {
+		exec_path=$exec_dir/$exec_name
+		break
+	}
+done
+IFS=$old_ifs
+
+[ -z "$exec_path" ] &&
+	err 1 "executable \`$exec_name' is not found in the system; PATH=$PATH"
+
+reset_signal_handlers
+trap '
+	last_exit_code=$?
+	[ $is_lock_set -eq 0 ] || rm -f "$lock_dir/$exec_name"
+	[ $exit_code -eq 0 ] && exit $last_exit_code
+	exit $exit_code
+' EXIT

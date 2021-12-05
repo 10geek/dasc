@@ -1,0 +1,5 @@
+name=Desktop environment / QR code generator and decoder (qtqr)
+name[ru]=Окружение рабочего стола / Генератор и декодер QR-кодов (qtqr)
+
+depends/desktop-env
+after/desktop-env

@@ -1,0 +1,21 @@
+[ ":$USER_ID" = :0 ] && {
+	WORKDIR=/var/lib/mailhandler
+	PIDFILE=$WORKDIR/mailhandler.log
+	LOGFILE=/var/log/mailhandler/mailhandler.log
+}
+
+MAIL_KEEP_DAYS=1
+
+
+if checkutil -s pipelog; then
+	process_log() {
+		pipelog -s 1M -k 2 -t "$LOGFILE"
+	}
+else
+	process_log() {
+		while gets log_str; do
+			du "$LOGFILE" | awk '{ exit $1 > 1024 * 10 }' || continue
+			puts "[$(date '+%Y-%m-%d %T %Z')] $log_str"
+		done > "$LOGFILE"
+	}
+fi

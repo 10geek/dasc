@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+tail -f /var/log/kern.log | sed -n '/apparmor/!b; s/[^"]*"\([^"]*\)"[^"]*/\1 /g; tp; b; :p p'

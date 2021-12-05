@@ -1,0 +1,9 @@
+process_local_mail() {
+	if du -c "$MAIL" "$MAILFILE" | LC_ALL=C awk -- 'BEGIN { ARGC = 1 } END { exit $1 > 1024 * ARGV[1] }' "$MBOX_MAX_SIZE"; then
+		mail_send_mbox < "$MAILFILE" || return 1
+	else
+		err "process_local_mail(): maximum mailbox size ($MBOX_MAX_SIZE MiB) is exceeded" >&2
+	fi
+
+	return 0
+}

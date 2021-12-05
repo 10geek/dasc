@@ -1,0 +1,5 @@
+name=Desktop environment / Image viewer (viewnior)
+name[ru]=Окружение рабочего стола / Просмотрщик изображений (viewnior)
+
+depends/desktop-env
+after/desktop-env

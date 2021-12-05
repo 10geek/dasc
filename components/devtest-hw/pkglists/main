@@ -1,0 +1,2 @@
+hardinfo manual
+libc6-dev auto for_manual(hardinfo) for(zlib1g-dev)

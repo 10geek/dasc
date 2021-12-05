@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Action
+Name=Compare
+Name[ru]=Сравнить
+Icon=view-split-left-right
+Profiles=diff2;diff3;
+
+[X-Action-Profile diff2]
+Exec=meld %F
+SelectionCount=2
+
+[X-Action-Profile diff3]
+Exec=meld %F
+SelectionCount=3

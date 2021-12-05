@@ -1,0 +1,35 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Saving current root partition UUID
+#\............................................................................./
+{
+	uuid=$(findmnt -fnoUUID /) &&
+	printf %s\\n "$uuid" > /var/local/lib/dasc/root-part-last-uuid
+} || exit
+
+#/*****************************************************************************\
+# Generating a list of kernel modules loaded at system startup and then loading
+# these modules
+#\............................................................................./
+/etc/dasc/events/startup/50_modules-load-generate || exit
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+{
+	debcomp wait-dpkg-lock-release &&
+	update-grub &&
+	dpkg-reconfigure console-setup
+} || exit
+
+for unit in \
+	systemd-logind.service \
+	smartmontools.service
+do
+	! systemctl -q is-active "$unit" ||
+		systemctl restart "$unit" || exit
+done
+
+# Applying keyboard configuration changes for X
+udevadm trigger --subsystem-match=input --action=change || exit

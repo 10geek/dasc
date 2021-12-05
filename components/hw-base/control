@@ -1,0 +1,18 @@
+name=Hardware / Base component
+name[ru]=Оборудование / Базовый компонент
+description=Contains everything necessary for installation on physical hardware or a virtual machine. This component is not required if installation is performed inside a container, such as LXC.
+description[ru]=Содержит всё необходимое для установки на физическое оборудование, либо виртуальную машину. Данный компонент не требуется, если установка производится внутри контейнера, например, LXC.
+
+conf/xkblayout/type=string
+conf/xkblayout/name=Keyboard layouts
+conf/xkblayout/name[ru]=Раскладки клавиатуры
+conf/xkblayout/description=Keyboard layouts separated by commas. Example: "us, ru". See /usr/share/X11/xkb/rules/base.lst for details.
+conf/xkblayout/description[ru]=Раскладки клавиатуры, перечисленные через запятую. Пример: "us,ru". См. /usr/share/X11/xkb/rules/base.lst для подробностей.
+conf/xkblayout/default=us
+conf/xkblayout/regexp=[a-z_/]+(,[a-z_/]+)*
+
+conf/disable_pwr_acpi_handling/type=boolean
+conf/disable_pwr_acpi_handling/name=Disable power-related ACPI events handling
+conf/disable_pwr_acpi_handling/name[ru]=Отключить обработку событий ACPI, связанных с питанием
+conf/disable_pwr_acpi_handling/description=Disable handling of the ACPI events, such as pressing the power, suspend and hibernation buttons, closing the laptop lid.
+conf/disable_pwr_acpi_handling/description[ru]=Отключить обработку событий ACPI, таких, как нажатие кнопок питания, ждущего режима, гибернации, закрытие крышки ноутбука.

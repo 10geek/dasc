@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+
+script_name=${0##*/}
+lang=$(locale | LC_ALL=C awk '{
+	if(!sub(/^[\t ]*LC_MESSAGES=/, "")) next
+	if(sub(/^"/, "")) {
+		if(!sub(/"$/, "")) next
+	} else if(sub(/^\47/, "")) {
+		if(!sub(/\47$/, "")) next
+	}
+	sub(/@.*/, "")
+	if(tolower($0) !~ /^[A-Za-z]+(_[A-Za-z]+)?\.utf-?8$/) next
+	sub(/\..*/, "")
+	print $0
+	exit
+}')
+[ -n "$MAIL" ] || {
+	{ MAIL=$(id -un) && [ -n "$MAIL" ]; } || {
+		printf %s\\n "$script_name: unable to get user name" >&2
+		exit 1
+	}
+	MAIL=/var/mail/$MAIL
+}
+
+[ -s "$MAIL" ] || exit 0
+
+case $lang in
+ru|ru_*)
+	msg_summary='У вас есть почта'
+	msg_body='Запустите Claws Mail, чтобы просмотреть её'
+	;;
+*)
+	msg_summary='You have a mail'
+	msg_body='Launch Claws Mail to view it'
+	;;
+esac
+
+notify-send -a "$script_name" -i mail-message "$msg_summary" "$msg_body"

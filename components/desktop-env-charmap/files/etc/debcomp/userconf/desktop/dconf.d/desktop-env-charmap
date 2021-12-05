@@ -1,0 +1,4 @@
+[org/gnome/charmap]
+font=@ms 'Sans 14'
+group-by='block'
+last-char=uint32 32

@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+! systemctl -q is-active ssh.service ||
+	systemctl reload ssh.service || exit

@@ -1,0 +1,251 @@
+#!/usr/bin/env sh
+#
+# Script that manages the launch and termination of graphical sessions.
+#
+# Copyright (c) 2021 10geek
+#
+# Licensed under the MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+checkutil() {
+	checkutil__util_path=$(command -v -- "$1") &&
+	[ -n "$checkutil__util_path" ]
+}
+gui_warning() {
+	if checkutil yad; then
+		yad --width=500 --height=300 --title=Warning --image=dialog-warning --text-info --wrap --button=OK
+	elif checkutil zenity; then
+		zenity --width=500 --height=300 --warning --no-markup --text="$(fold -s)"
+	elif checkutil kdialog; then
+		kdialog --sorry "$(sed 's/\\/\\\\/g')"
+	elif checkutil xmessage; then
+		fold -s | xmessage -center -file -
+	fi 2>/dev/null
+}
+
+
+script_name=${0##*/}
+
+logfile=${DISPLAY#:}
+logfile=${logfile%.*}
+[ -n "$logfile" ] && logfile=.$logfile
+logfile=$HOME/.xsession$logfile.log
+
+if [ -z "$DESKTOP_SESSION_NESTING" ]; then
+	has_errors=0
+	do_remove=0
+	{ link_path=$(readlink /dev/fd/2); } 2>&1
+	[ ":$link_path" = ":$HOME/.xsession-errors" ] && {
+		do_remove=1
+		exec 1>/dev/null || has_errors=1
+	}
+	link_path=$(readlink /dev/fd/2)
+	[ ":$link_path" = ":$HOME/.xsession-errors" ] && {
+		do_remove=1
+		exec 2>/dev/null || has_errors=1
+	}
+	[ "$do_remove$has_errors" = 10 ] && rm -f ~/.xsession-errors
+	DESKTOP_SESSION_NESTING=0 exec pipelog -RtI -s 1M -k 2 -c xz:2 -S TERM "$logfile" "$0" "$@"
+else
+	DESKTOP_SESSION_NESTING=$(LC_ALL=C awk 'BEGIN { print int(ENVIRON["DESKTOP_SESSION_NESTING"] + 1) }')
+	export DESKTOP_SESSION_NESTING
+fi
+
+
+printf %s\\n "$script_name: starting session initialization" >&2
+
+# Load profile
+has_errors=0
+for file in /etc/profile ~/.profile /etc/xprofile ~/.xprofile; do
+	[ -f "$file" ] || continue
+	printf %s\\n "$script_name: loading profile file: \`$file'" >&2
+	. "$file" || has_errors=1
+done
+
+[ $has_errors -ne 0 ] && {
+	cat <<- EOF
+	An error occured when loading one of profile files.
+	As a result the session will not be configured correctly.
+	EOF
+	[ $DESKTOP_SESSION_NESTING -eq 1 ] &&
+	printf '\n%s\n' "See log file $logfile for more information."
+} | gui_warning
+
+unset -v logfile has_errors
+
+
+# Load resources
+if checkutil xrdb; then
+	xresourcedir=/etc/X11/Xresources
+	if [ -d "$xresourcedir" ]; then
+		for file in "$xresourcedir"/*; do
+			printf %s\\n "$script_name: loading resource: \`$file'" >&2
+			xrdb -merge "$file"
+		done
+	fi
+	xresourcefile=$HOME/.Xresources
+	if [ -f "$xresourcefile" ]; then
+		printf %s\\n "$script_name: loading resource: \`$xresourcefile'" >&2
+		xrdb -merge "$xresourcefile"
+	fi
+fi
+
+# Load keymaps
+xkb_in_use=0
+if checkutil setxkbmap; then
+	for file in /etc/X11/Xkbmap ~/.Xkbmap; do
+		[ -f "$file" ] || continue
+		printf %s\\n "$script_name: loading keymap: \`$file'" >&2
+		setxkbmap $(cat "$file")
+		xkb_in_use=1
+	done
+fi
+
+# Load xmodmap if not using XKB
+if [ $xkb_in_use -eq 0 ] && checkutil xmodmap; then
+	for file in /etc/X11/Xmodmap ~/.Xmodmap; do
+		[ -f "$file" ] || continue
+		printf %s\\n "$script_name: loading modmap: \`$file'" >&2
+		xmodmap "$file"
+	done
+fi
+
+unset -v xkb_in_use
+
+# Run all system xinitrc shell scripts.
+xinitdir=/etc/X11/xinit/xinitrc.d
+if [ -d "$xinitdir" ]; then
+	for file in "$xinitdir"/*; do
+		[ -f "$file" ] || continue
+		printf %s\\n "$script_name: loading xinit script: \`$file'" >&2
+		. "$file"
+	done
+fi
+
+
+trap 'printf %s\\n "$script_name: received SIGTERM" >&2' TERM
+trap 'exec 1>/dev/null 2>/dev/null' PIPE
+
+( # Start of subprocess
+
+# Load Xsession scripts
+# OPTIONFILE, USERXSESSION, USERXSESSIONRC and ALTUSERXSESSION are required
+# by the scripts to work
+xsessionddir=/etc/X11/Xsession.d
+OPTIONFILE=/etc/X11/Xsession.options
+USERXSESSION=$HOME/.xsession
+USERXSESSIONRC=$HOME/.xsessionrc
+ALTUSERXSESSION=$HOME/.Xsession
+
+if [ -d "$xsessionddir" ]; then
+	for file in "$xsessionddir"/*; do
+		[ -f "$file" ] || continue
+		printf %s\\n "$script_name: loading X session script: $file" >&2
+		. "$file"
+	done
+fi
+
+printf %s\\n "$script_name: starting process $*" >&2
+exec "$@"
+
+) # End of subprocess
+
+
+trap '' TERM
+xsession_post_stop() { :; }
+xsessionstoprc=$HOME/.xsessionstoprc
+xsessionstoprc_loaded=1
+
+if [ -f "$xsessionstoprc" ]; then
+	printf %s\\n "$script_name: loading \`$xsessionstoprc' script" >&2
+	. "$xsessionstoprc" || {
+		printf %s\\n "$script_name: \`$xsessionstoprc' returned code $?" >&2
+		xsessionstoprc_loaded=0
+	}
+fi
+
+if [ -n "$XDG_SESSION_ID" ]; then
+	# Terminate all processes of the current session
+	i=76
+	while :; do
+		ps -Ao ruid,pid,ppid,lsession$([ $i -eq 26 ] && echo ,cmd) | LC_ALL=C awk -- '
+		function delete_childs(pid,    i) {
+			for(i = 1; i <= childs[pid]; i++) {
+				delete pids[childs[pid, i]]
+				delete_childs(childs[pid, i])
+			}
+		}
+		BEGIN { ARGC = 1 }
+		ARGV[2] == "" || $1 == ARGV[2] {
+			parents[$2] = $3
+			childs[$3, ++childs[$3]] = $2
+			if($4 == ARGV[3]) {
+				if(ARGV[5] == 26) {
+					pid = $2
+					gsub(/[\t ]+/, " "); sub(/^ [^ ]+ /, "")
+					pids[pid] = $0
+				} else pids[$2] = ""
+			}
+		}
+		END {
+			pid = ARGV[4]
+			while(pid in parents) {
+				ppid = parents[pid]
+				delete pids[pid]
+				root_parent_pid = pid
+				pid = ppid
+			}
+			delete_childs(root_parent_pid)
+			pids_str = ""
+			for(pid in pids) {
+				pids_str = pids_str " " pid
+				if(ARGV[5] == 26)
+					print ARGV[1] ": process `" pids[pid] "\47 is not terminated by timeout, sending SIGKILL"
+			}
+			if(pids_str == "") exit 0
+			if(ARGV[5] == 76) system("kill -TERM" pids_str)
+			else if(ARGV[5] == 26) system("kill -KILL" pids_str)
+			exit 1
+		}' "$script_name" "$(id -u)" "$XDG_SESSION_ID" $$ $i >&2 && break
+		i=$((i - 1))
+		[ $i -eq 0 ] && break
+		sleep 0.2
+	done
+	[ $i -eq 0 ] && {
+		printf %s\\n "$script_name: unable to terminate session processes" >&2
+		exit 1
+	}
+
+	printf %s\\n "$script_name: session stopped" >&2
+
+	if [ $xsessionstoprc_loaded -eq 1 ]; then
+		xsession_post_stop || {
+			printf %s\\n "$script_name: function xsession_post_stop() returned code $?" >&2
+			exit 1
+		}
+	else
+		exit 1
+	fi
+else
+	printf %s\\n "$script_name: environment variable XDG_SESSION_ID is not defined, skipping termination of the session processes" >&2
+fi
+
+exit 0

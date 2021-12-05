@@ -1,0 +1,15 @@
+name=Hardware / UPS / Eaton Ellipse MAX 850
+name[ru]=Оборудование / ИБП / Eaton Ellipse MAX 850
+
+# Probably the software from the `hw-base` component may be required for the
+# software from this component.
+depends/hw-base
+after/hw-base
+
+# To restart the NUT client, it must be configured
+after/hw-ups-nut-client
+
+# This component complements the configuration of the `hw-ups-nut-server` component,
+# which for this reason should be installed before this component.
+depends/hw-ups-nut-server
+after/hw-ups-nut-server

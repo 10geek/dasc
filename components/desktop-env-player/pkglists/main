@@ -1,0 +1,10 @@
+mpv manual for_manual(smplayer) for(smplayer youtube-dl)
+smplayer manual
+curl auto for_manual(smplayer mpv) for(youtube-dl)
+ffmpeg auto for_manual(smplayer mpv) for(youtube-dl)
+libaacs0 auto for_manual(smplayer mpv) for(libbluray2 libbdplus0)
+libbdplus0 auto for_manual(smplayer mpv) for(libaacs0)
+ocl-icd-libopencl1 auto for_manual(smplayer mpv) for(libavutil56 libavfilter7)
+smplayer-l10n auto for_manual(smplayer) for(smplayer)
+smplayer-themes auto for_manual(smplayer) for(smplayer)
+youtube-dl auto for_manual(smplayer mpv) for(mpv)

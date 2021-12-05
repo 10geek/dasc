@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+! systemctl -q is-enabled nut-server.service || {
+	systemctl restart nut-server.service || exit
+	! [ -f /etc/nut/upsmon.conf ] ||
+	! LC_ALL=C awk 'BEGIN { exit_code = 1 }
+		$1 == "MONITOR" && $2 ~ /@localhost$/ { exit_code = 0; exit }
+		END { exit exit_code }' /etc/nut/upsmon.conf ||
+	! systemctl -q is-enabled nut-client.service ||
+		systemctl restart nut-client.service || exit
+}

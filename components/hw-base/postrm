@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Deleting files created by scripts from this component
+#\............................................................................./
+rm -f \
+	/var/local/lib/dasc/root-part-last-uuid \
+	/etc/modules-load.d/dasc-generated.conf || exit
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+{
+	debcomp wait-dpkg-lock-release &&
+	update-grub &&
+	dpkg-reconfigure console-setup
+} || exit
+
+for unit in \
+	systemd-logind.service \
+	smartmontools.service
+do
+	! systemctl -q is-active "$unit" ||
+		systemctl restart "$unit" || exit
+done
+
+# Applying keyboard configuration changes for X
+udevadm trigger --subsystem-match=input --action=change || exit

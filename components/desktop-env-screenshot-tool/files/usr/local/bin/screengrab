@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+
+. /usr/local/share/dasc/lib/app-wrapper || exit
+
+lock
+trap 'kill -TERM $! 2>/dev/null' $signals
+"$exec_path" "$@" &
+unlock
+waitpid $!
+exit_code=$?
+reset_signal_handlers
+
+lock
+
+is_running ||
+	find /tmp ! -path /tmp -prune -uid "$(id -u)" -type f \( \
+			-name 'screenshot-*.png' -o \
+			-name 'screenshot-*.jpg' \
+		\) -exec rm -f {} \; || err_post_start

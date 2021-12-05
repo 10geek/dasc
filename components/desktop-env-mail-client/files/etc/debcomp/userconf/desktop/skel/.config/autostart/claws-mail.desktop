@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Claws Mail
+Icon=claws-mail
+Exec=claws-mail
+NotShowIn=OPENBOX;

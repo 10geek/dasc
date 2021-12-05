@@ -1,0 +1,54 @@
+#!/usr/bin/env sh
+
+# Prevent starting processes by the user while its deletion is in progress
+username_file=/var/local/lib/dasc/userdel-deleting-user
+{
+	umask 027 &&
+	printf %s\\n "$EVENT_USER" > "$username_file.new" &&
+	mv -f "$username_file.new" "$username_file"
+} || exit
+
+last_sess_time_file=/var/local/lib/dasc/userdata/$EVENT_USER/last-sess-time
+[ -e "$last_sess_time_file" ] && {
+	wait_time=$(LC_ALL=C awk 'BEGIN {
+		ARGC = 2
+		if(ARGV[2] == "") exit 1
+		ARGV[2] += 0; ARGV[3] += 0
+	} { exit } END {
+		if($0 == "") { print ARGV[3]; exit }
+		wait_time = int(ARGV[3] - (ARGV[2] - $0))
+		print (wait_time < 0) ? 0 : wait_time
+	}' "$last_sess_time_file" "$(date +%s)" 10) || exit
+	[ $wait_time -ne 0 ] && {
+		sleep "$wait_time" || exit 1
+	}
+}
+
+i=10
+killall -s TERM -u "$EVENT_USER" && {
+	while [ $i -ne 0 ]; do
+		sleep 1
+		killall -s 0 -u "$EVENT_USER" || break
+		i=$((i - 1))
+	done
+}
+[ $i -eq 0 ] && {
+	i=2
+	killall -s KILL -u "$EVENT_USER" &&
+	while [ $i -ne 0 ]; do
+		sleep 1
+		killall -s 0 -u "$EVENT_USER" || break
+		i=$((i - 1))
+	done
+}
+[ $i -eq 0 ] && {
+	printf %s\\n "$0: unable to terminate all user processes" >&2
+	exit 1
+}
+
+loginctl disable-linger -- "$EVENT_USER" || exit 1
+
+! crontab -lu -- "$EVENT_USER" > /dev/null 2>&1 ||
+crontab -ru -- "$EVENT_USER" || exit 1
+
+exit 0

@@ -1,0 +1,8 @@
+/* Custom GTK3 CSS for Geany */
+
+#GeanyMainWindow statusbar {
+	margin: -4px;
+}
+	#GeanyMainWindow statusbar box {
+		margin: -4px;
+	}

@@ -1,0 +1,45 @@
+#!/usr/bin/env sh
+
+err() {
+	if [ $# -gt 1 ]; then
+		printf %s\\n "$0: $2" >&2
+	else
+		printf %s\\n "$0: $1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+
+get_window_id() {
+	window_id=$(xdotool search --limit 1 "$@" --name '^Dropdown Terminal$')
+}
+
+
+exec_name=${0##*/}
+lock_dir=$HOME/.local/share/dasc/lock/desktop
+exit_code=0
+
+{
+	mkdir -p "$lock_dir" &&
+	exec 9>"$lock_dir/$exec_name" &&
+	flock -w1 9
+} ||
+	err 1 "unable to get lock \`$lock_dir/$exec_name'"
+
+unset -v output
+if ! get_window_id; then
+	xdg-user-dir-cdexec DESKTOP terminator -T 'Dropdown Terminal' 9>&- 2>/dev/null &
+	get_window_id --sync
+elif xwininfo -id "$window_id" | grep -qF 'Map State: IsViewable'; then
+	output=$(xdotool windowminimize "$window_id" 2>&1)
+else
+	output=$(xdotool windowactivate "$window_id" 2>&1)
+fi || {
+	exit_code=$?
+	[ -n "$output" ] && err "xdotool: $output"
+}
+
+exec 9>&- ||
+	err 1 "unable to release lock \`$lock_dir/$exec_name'"
+
+exit $exit_code

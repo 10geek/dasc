@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+script_name=${0##*/}
+{
+	echo
+	{
+		stderr=$(busctl --user --json=short --match=type=signal,sender=org.freedesktop.DBus,path_namespace=/,interface=org.freedesktop.DBus,member=NameOwnerChanged,arg0="$1" monitor 3>&2 2>&1 1>&3 3>&-)
+	} 2>&1
+	case $? in
+	0|141) ;;
+	*)
+		printf %s\\n "$script_name: busctl exited with code $?" >&2
+		printf %s\\n "$stderr" | sed "s/^/$script_name: busctl: /" >&2
+		sleep 2
+		;;
+	esac
+} | {
+	shift; "$@" &
+	head -n1
+}

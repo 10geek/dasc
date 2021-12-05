@@ -1,0 +1,62 @@
+#!/usr/bin/env sh
+
+debcomp fs-diversify "$PREPDIR" || exit
+
+#/*****************************************************************************\
+# Generating files from macro files
+#\............................................................................./
+find "$PREPDIR" -type f -name '*.awm' -exec sh -c '{
+	case $0 in "$PREPDIR/etc/debcomp/userconf"/*) exit; esac
+	awkmacro "$0" > "${0%.*}" &&
+	rm -f "$0"
+} || kill -INT "$PPID"' {} \; || exit
+
+#/*****************************************************************************\
+# Unpacking tarballs
+#\............................................................................./
+(
+	cd "$PREPDIR/usr/share/themes" &&
+	tar -xJf "$CONFDIR/$COMPONENT/tarballs/themes.tar.xz"
+) || exit
+
+#/*****************************************************************************\
+# Removing files and directories from the lightdm user's home directory, which
+# will be replaced by the corresponding ones from the configuration
+#\............................................................................./
+unset -v lightdm_home_replaced_files
+for file in \
+	"$PREPDIR/var/lib/lightdm/"* \
+	"$PREPDIR/var/lib/lightdm/".*
+do
+	case $file in
+	"$PREPDIR/var/lib/lightdm"|\
+	"$PREPDIR/var/lib/lightdm/"|\
+	"$PREPDIR/var/lib/lightdm/."|\
+	"$PREPDIR/var/lib/lightdm/..")
+		continue
+	esac
+	[ -e "$file" ] || continue
+	file=${file##*/}
+	lightdm_home_replaced_files=$lightdm_home_replaced_files$(
+		LC_ALL=C awk -- 'BEGIN {
+			gsub(/\47/, "\47\134\47\47", ARGV[1])
+			print " \47" ARGV[1] "\47"
+		}' "$file"
+	) || exit
+	debcomp remove "/var/lib/lightdm/$file" || exit
+done
+lightdm_home_replaced_files=${lightdm_home_replaced_files# }
+debcomp setvar lightdm_home_replaced_files << EOF || exit
+$lightdm_home_replaced_files
+EOF
+
+#/*****************************************************************************\
+# Changing permissions
+#\............................................................................./
+find \
+	"$PREPDIR/etc/debcomp/userconf/desktop/postinst.d" \
+	"$PREPDIR/usr/local/bin" \
+    "$PREPDIR/usr/local/share/dasc/libexec" \
+	-type f -exec sh -c 'chmod +x "$0" || kill -INT "$PPID"' {} \; || exit
+
+chown -R lightdm:lightdm "$PREPDIR/var/lib/lightdm" || exit

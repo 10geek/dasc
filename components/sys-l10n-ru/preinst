@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Generating a new /etc/locale.gen
+#\............................................................................./
+LC_ALL=C awk '{
+	line = $0
+	is_commented = sub(/[\t ]*#[\t ]*/, "")
+	if(NF == 2) {
+		if(!is_printed && $1 == "ru_RU.UTF-8") { is_printed = 1; print $0 }
+		else if(is_commented) print line
+		else print "# " $0
+	} else print line
+}' /etc/locale.gen > "$PREPDIR/etc/locale.gen" || exit

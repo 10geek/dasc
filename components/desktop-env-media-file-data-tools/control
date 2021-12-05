@@ -1,0 +1,5 @@
+name=Desktop environment / Tools for working with media file data (kid3, mediainfo)
+name[ru]=Окружение рабочего стола / Инструменты для работы с данными медиафайлов (kid3, mediainfo)
+
+depends/desktop-env
+after/desktop-env

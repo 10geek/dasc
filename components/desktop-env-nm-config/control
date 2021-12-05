@@ -1,0 +1,10 @@
+name=Desktop environment / Interface for configuring network connections (network-manager-gnome)
+name[ru]=Окружение рабочего стола / Интерфейс настройки сетевых соединений (network-manager-gnome)
+description[ru]=Interface for configuring network connections using Network Manager, including Ethernet, WiFi, mobile connections (WWAN) and VPN. To configure mobile connections, you will need the `hw-modem-manager` component (Hardware / ModemManager).
+description[ru]=Интерфейс настройки сетевых соединений средствами Network Manager, включая Ethernet, WiFi, мобильных соединений (WWAN) и VPN. Для настройки мобильных соединений вам потребуется компонент `hw-modem-manager` (Оборудование / ModemManager).
+
+# `network-manager-gnome` package depends on `network-manager` package
+depends/net-network-manager
+
+depends/desktop-env
+after/desktop-env

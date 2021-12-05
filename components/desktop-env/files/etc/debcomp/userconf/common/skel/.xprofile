@@ -1,0 +1,9 @@
+for conf_name in common desktop; do
+	[ -e "$HOME/.debcomp/userconf/installed/$conf_name" ] || {
+		[ ":$conf_name" != :desktop ] ||
+			rm -f ~/.xprofile || return
+		debcomp userconf -f "$conf_name" || return
+	}
+done
+
+! [ -e ~/.xprofile ] || . ~/.xprofile

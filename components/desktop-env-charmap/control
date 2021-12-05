@@ -1,0 +1,5 @@
+name=Desktop environment / Unicode character picker and font browser (gucharmap)
+name[ru]=Окружение рабочего стола / Программа просмотра шрифтов и выбора символов Unicode (gucharmap)
+
+depends/desktop-env
+after/desktop-env

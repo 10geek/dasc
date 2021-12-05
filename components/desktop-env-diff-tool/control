@@ -1,0 +1,5 @@
+name=Desktop environment / Tool for comparing files and directories (meld)
+name[ru]=Окружение рабочего стола / Утилита для сравнения файлов и каталогов (meld)
+
+depends/desktop-env
+after/desktop-env

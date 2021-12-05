@@ -1,0 +1,26 @@
+#!/usr/bin/env sh
+
+[ $# -lt 2 ] && {
+	printf %s\\n "Usage: ${0##*/} <xdg_dir_name> <command> [arg] ..." >&2
+	exit 1
+}
+
+if [ -n "$XDG_CONFIG_HOME" ]; then
+	user_dirs_conf_path=$XDG_CONFIG_HOME/user-dirs.dirs
+else
+	user_dirs_conf_path=$HOME/.config/user-dirs.dirs
+fi
+
+[ -f "$user_dirs_conf_path" ] && . "$user_dirs_conf_path"
+
+if [ ":$1" = :DESKTOP ]; then
+	eval "working_dir=\${XDG_${1}_DIR:-\$HOME/Desktop}"
+else
+	eval "working_dir=\${XDG_${1}_DIR:-\$HOME}"
+fi
+
+[ -n "$working_dir" ] &&
+cd -- "$working_dir"
+shift
+
+exec "$@"

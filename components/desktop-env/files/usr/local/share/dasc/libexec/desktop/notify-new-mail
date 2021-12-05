@@ -1,0 +1,58 @@
+#!/usr/bin/env sh
+# Usage: "$0" <notification_app_name> <from> <to> <subject> <mail_body_part>
+
+timestamp_file=$HOME/.local/share/dasc/data/last-new-mail-notification-time
+timestamp_file_dir=${timestamp_file%/*}
+current_timestamp=$(date +%s)
+lang=$(locale | LC_ALL=C awk '{
+	if(!sub(/^[\t ]*LC_MESSAGES=/, "")) next
+	if(sub(/^"/, "")) {
+		if(!sub(/"$/, "")) next
+	} else if(sub(/^\47/, "")) {
+		if(!sub(/\47$/, "")) next
+	}
+	sub(/@.*/, "")
+	if(tolower($0) !~ /^[A-Za-z]+(_[A-Za-z]+)?\.utf-?8$/) next
+	sub(/\..*/, "")
+	print $0
+	exit
+}')
+
+if [ -f "$timestamp_file" ]; then
+	[ $((current_timestamp - $(cat "$timestamp_file"))) -lt 5 ] &&
+	exit 0
+elif ! [ -d "$timestamp_file_dir" ]; then
+	mkdir -p "$timestamp_file_dir"
+fi
+
+[ -n "$DISPLAY" ] && {
+	USER_ID=$(id -u) || exit 1
+	[ -n "$XDG_RUNTIME_DIR" ] || export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+	case $lang in
+	ru|ru_*)
+		msg_summary='Новая почта'
+		msg_body=$(printf %s\\n \
+			"От: $2" \
+			"Кому: $3" \
+			"Тема: $4" \
+			'' \
+			"$5"
+		)
+		;;
+	*)
+		msg_summary='New mail'
+		msg_body=$(printf %s\\n \
+			"From: $2" \
+			"To: $3" \
+			"Subject: $4" \
+			'' \
+			"$5"
+		)
+		;;
+	esac
+	notify-send -a "$1" -i mail-message "$msg_summary" "$msg_body"
+	paplay /usr/share/sounds/freedesktop/stereo/message.oga
+	printf %s\\n "$current_timestamp" > "$timestamp_file"
+}
+
+exit 0

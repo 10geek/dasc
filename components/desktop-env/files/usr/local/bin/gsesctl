@@ -1,0 +1,437 @@
+#!/usr/bin/env sh
+
+. /usr/local/share/shell/jsio.sh || exit 1
+
+err() {
+	if [ $# -gt 1 ]; then
+		printf %s\\n "$program_name: $2" >&2
+	else
+		printf %s\\n "$program_name: $1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+err_usage() {
+	[ $# -ne 0 ] && err "$@"
+	set -- "$(usage | LC_ALL=C awk -- 'BEGIN { ARGC = 1; is_usage = 0 } {
+		if(!is_usage) {
+			sub(/^[\t\n\v\f\r ]+/, "")
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				is_usage = 1
+			} else next
+		}
+		sub(/^[\t\n\v\f\r ]+/, ""); sub(/[\t\n\v\f\r ]+$/, "")
+		if($0 == "") {
+			if(is_usage == 2) exit
+			else next
+		}
+		if(is_usage == 2) {
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				sub(/^[\t\n\v\f\r ]+/, "")
+			}
+			printf("%s", ARGV[1] ": ")
+		}
+		print "usage: " $0
+		is_usage = 2
+	} END { exit exit_code }' "$program_name")"
+	[ -n "$1" ] && err "$1"
+	err "try \`$program_name --help' for more information" >&2
+		exit 1
+}
+# Usage: l10n_msg default_message [lang message] ...
+l10n_msg() {
+	l10n_msg__msg=$1; shift
+	while [ $# -gt 1 ]; do
+		case $1 in
+		$lang)
+			l10n_msg__msg=$2
+			break
+			;;
+		*_*) ;;
+		*)
+			case $lang in
+			${1}_*) l10n_msg__msg=$2;;
+			esac
+			;;
+		esac
+		shift 2
+	done
+	printf %s\\n "$l10n_msg__msg"
+}
+
+do_action() {
+	case $1 in
+	shutdown)
+		do_action__errors=$(systemctl poweroff 2>&1);;
+	reboot)
+		do_action__errors=$(systemctl reboot 2>&1);;
+	suspend)
+		do_action__errors=$(systemctl suspend 2>&1);;
+	hibernate)
+		do_action__errors=$(systemctl hibernate 2>&1);;
+	hybrid-sleep)
+		do_action__errors=$(systemctl hybrid-sleep 2>&1);;
+	switch-user)
+		do_action__errors=$(dm-tool switch-to-greeter 2>&1);;
+	logout)
+		do_action__errors=$(openbox --exit 2>&1);;
+	*)
+		case $lang in
+		ru|ru_*)
+			do_action__errors="Неизвестное действие: \"$1\"";;
+		*)
+			do_action__errors="Unknown action: \"$1\"";;
+		esac
+		false
+		;;
+	esac && return
+	do_action__exit_code=$?
+	case $lang in
+	ru|ru_*)
+		do_action__dialog_title='Ошибка'
+		do_action__err_descr='Произошла ошибка при выполнении действия "%s":'
+		do_action__err_descr_exit_code='Код завершения:'
+		;;
+	*)
+		do_action__dialog_title='Error'
+		do_action__err_descr='An error occurred while performing the "%s" action:'
+		do_action__err_descr_exit_code='Exit code:'
+		;;
+	esac
+	case $2 in
+	1)
+		jsio '
+			let dialog = new Gtk.MessageDialog({
+				transient_for: ui.win_main,
+				message_type: Gtk.MessageType.ERROR,
+				buttons: Gtk.ButtonsType.CLOSE,
+				title: ' "$do_action__dialog_title" ',
+				text: ' "$(
+					printf "$do_action__err_descr" "$1"
+					printf %s\\n '' \
+						"$do_action__errors" \
+						"$do_action__err_descr_exit_code $do_action__exit_code"
+				)" '
+			});
+			dialog.run();
+			dialog.destroy();'
+		;;
+	*)
+		err "$(
+			printf "$do_action__err_descr" "$1"
+		) $do_action__errors; $do_action__err_descr_exit_code $do_action__exit_code"
+		;;
+	esac
+}
+
+usage() {
+	cat <<- EOF
+	Usage: $program_name [<action>]
+
+	Options:
+	  -h, --help     Display this help and exit
+	EOF
+}
+
+
+program_name=${0##*/}
+last_action_file=$HOME/.local/share/dasc/data/${0##*/}-gui-last-action
+
+case $1 in
+-h|--help)
+	usage; exit 0
+	;;
+esac
+
+lang=$(locale | LC_ALL=C awk '{
+	if(!sub(/^[\t ]*LC_MESSAGES=/, "")) next
+	if(sub(/^"/, "")) {
+		if(!sub(/"$/, "")) next
+	} else if(sub(/^\47/, "")) {
+		if(!sub(/\47$/, "")) next
+	}
+	sub(/@.*/, "")
+	if(tolower($0) !~ /^[A-Za-z]+(_[A-Za-z]+)?\.utf-?8$/) next
+	sub(/\..*/, "")
+	print $0
+	exit
+}')
+
+
+if [ $# -eq 0 ]; then
+	unset -v action
+	exit_code=0
+
+	[ -f "$last_action_file" ] &&
+	action=$(head -n1 -- "$last_action_file")
+
+	signal_handler() {
+		case $1 in
+		EXIT) jsio__exit;;
+		*) exit;;
+		esac
+	}
+	signal_handler__register
+
+	checkutil -a gjs cjs || exit 1
+	jsio__init "$checkutil__util" 6 7 || exit 1
+
+	jsio 'imports.gi.versions.Gtk = "3.0"'
+	jsio 'this.Gtk = imports.gi.Gtk'
+
+	jsio 'Gtk.init(null)'
+
+	jsio : = 'this.builder = Gtk.Builder.new_from_string(jsio.read(), -1)'
+	jsio__write <<- EOF
+	<?xml version="1.0" encoding="UTF-8"?>
+	<interface>
+	  <requires lib="gtk+" version="3.0"/>
+	  <object class="GtkListStore" id="liststore_action">
+	    <columns>
+	      <!-- column-name action -->
+	      <column type="gchararray"/>
+	      <!-- column-name icon_name -->
+	      <column type="gchararray"/>
+	      <!-- column-name label -->
+	      <column type="gchararray"/>
+	    </columns>
+	  </object>
+	  <object class="GtkDialog" id="win_main">
+	    <property name="can_focus">False</property>
+	    <property name="title">$(l10n_msg 'System logout' ru 'Выход из системы')</property>
+	    <property name="border_width">10</property>
+	    <property name="resizable">False</property>
+	    <property name="window_position">center</property>
+	    <property name="default_width">320</property>
+	    <property name="icon_name">system-log-out</property>
+	    <property name="type_hint">dialog</property>
+	    <child type="titlebar">
+	      <placeholder/>
+	    </child>
+	    <child internal-child="vbox">
+	      <object class="GtkBox">
+	        <property name="visible">True</property>
+	        <property name="can_focus">False</property>
+	        <property name="orientation">vertical</property>
+	        <child internal-child="action_area">
+	          <object class="GtkButtonBox">
+	            <property name="visible">True</property>
+	            <property name="can_focus">False</property>
+	            <property name="margin_top">5</property>
+	            <property name="layout_style">end</property>
+	            <child>
+	              <object class="GtkButton" id="btn_ok">
+	                <property name="label">gtk-ok</property>
+	                <property name="visible">True</property>
+	                <property name="can_focus">True</property>
+	                <property name="receives_default">False</property>
+	                <property name="use_stock">True</property>
+	                <accelerator key="Return" signal="clicked"/>
+	              </object>
+	              <packing>
+	                <property name="expand">True</property>
+	                <property name="fill">True</property>
+	                <property name="position">0</property>
+	              </packing>
+	            </child>
+	            <child>
+	              <object class="GtkButton" id="btn_cancel">
+	                <property name="label">gtk-cancel</property>
+	                <property name="visible">True</property>
+	                <property name="can_focus">True</property>
+	                <property name="receives_default">False</property>
+	                <property name="use_stock">True</property>
+	              </object>
+	              <packing>
+	                <property name="expand">True</property>
+	                <property name="fill">True</property>
+	                <property name="position">1</property>
+	              </packing>
+	            </child>
+	          </object>
+	          <packing>
+	            <property name="expand">False</property>
+	            <property name="fill">False</property>
+	            <property name="position">0</property>
+	          </packing>
+	        </child>
+	        <child>
+	          <object class="GtkBox">
+	            <property name="visible">True</property>
+	            <property name="can_focus">False</property>
+	            <child>
+	              <object class="GtkImage">
+	                <property name="visible">True</property>
+	                <property name="can_focus">False</property>
+	                <property name="margin_right">10</property>
+	                <property name="stock">gtk-missing-image</property>
+	                <property name="icon_name">system-log-out</property>
+	                <property name="icon_size">6</property>
+	              </object>
+	              <packing>
+	                <property name="expand">False</property>
+	                <property name="fill">True</property>
+	                <property name="position">0</property>
+	              </packing>
+	            </child>
+	            <child>
+	              <object class="GtkBox">
+	                <property name="visible">True</property>
+	                <property name="can_focus">False</property>
+	                <property name="orientation">vertical</property>
+	                <property name="spacing">5</property>
+	                <child>
+	                  <object class="GtkLabel" id="dialog_label">
+	                    <property name="visible">True</property>
+	                    <property name="can_focus">False</property>
+	                    <property name="halign">start</property>
+	                    <property name="label">$(l10n_msg 'Choose action:' ru 'Выберите действие:')</property>
+	                  </object>
+	                  <packing>
+	                    <property name="expand">False</property>
+	                    <property name="fill">True</property>
+	                    <property name="position">0</property>
+	                  </packing>
+	                </child>
+	                <child>
+	                  <object class="GtkComboBox" id="combobox_action">
+	                    <property name="visible">True</property>
+	                    <property name="can_focus">False</property>
+	                    <property name="model">liststore_action</property>
+	                    <child>
+	                      <object class="GtkCellRendererPixbuf"/>
+	                      <attributes>
+	                        <attribute name="icon_name">1</attribute>
+	                      </attributes>
+	                    </child>
+	                    <child>
+	                      <object class="GtkCellRendererText"/>
+	                      <attributes>
+	                        <attribute name="text">2</attribute>
+	                      </attributes>
+	                    </child>
+	                  </object>
+	                  <packing>
+	                    <property name="expand">False</property>
+	                    <property name="fill">True</property>
+	                    <property name="position">1</property>
+	                  </packing>
+	                </child>
+	                <child>
+	                  <object class="GtkCheckButton" id="ckbox_remember_action">
+					    <property name="label">$(l10n_msg 'Remember selected action' ru 'Запомнить выбранное действие')</property>
+	                    <property name="visible">True</property>
+	                    <property name="can_focus">True</property>
+	                    <property name="receives_default">False</property>
+	                    <property name="draw_indicator">True</property>
+	                  </object>
+	                  <packing>
+	                    <property name="expand">False</property>
+	                    <property name="fill">True</property>
+	                    <property name="position">2</property>
+	                  </packing>
+	                </child>
+	              </object>
+	              <packing>
+	                <property name="expand">True</property>
+	                <property name="fill">True</property>
+	                <property name="position">1</property>
+	              </packing>
+	            </child>
+	          </object>
+	          <packing>
+	            <property name="expand">False</property>
+	            <property name="fill">True</property>
+	            <property name="position">1</property>
+	          </packing>
+	        </child>
+	      </object>
+	    </child>
+	    <accelerator key="q" signal="close" modifiers="GDK_CONTROL_MASK"/>
+	  </object>
+	</interface>
+	EOF
+	jsio__read; jsio__read
+
+	jsio 'this.ui = {}; [
+		"win_main",
+		"dialog_label",
+		"combobox_action",
+		"liststore_action",
+		"ckbox_remember_action",
+		"btn_ok",
+		"btn_cancel"
+	].forEach((id) => ui[id] = builder.get_object(id))'
+
+	jsio 'ui.win_main.set_keep_above(true)'
+	jsio 'ui.win_main.stick()'
+	jsio 'ui.win_main.connect("delete-event", () => Gtk.main_quit())'
+	jsio 'ui.btn_ok.connect("clicked", jsio.callback("do_action"))'
+	jsio 'ui.btn_cancel.connect("clicked", () => Gtk.main_quit())'
+
+	is_active_set=0
+	fn() {
+		jsio 'this.iter = ui.liststore_action.insert_with_valuesv(-1, [0, 1, 2], [' "$1" , "$2" , "$3" '])'
+		case $is_active_set in (1)
+			return
+		esac
+		case $1 in ($action)
+			is_active_set=1
+			jsio 'ui.combobox_action.set_active_iter(iter)'
+		esac
+	}
+	case $lang in
+	ru|ru_*)
+		fn logout system-log-out 'Выход из системы'
+		fn shutdown system-shutdown 'Завершение работы'
+		fn reboot system-reboot 'Перезагрузка'
+		fn suspend system-suspend 'Ждущий режим'
+		fn hibernate system-suspend-hibernate 'Гибернация'
+		fn hybrid-sleep system-suspend-hibernate 'Гибридный спящий режим'
+		fn switch-user system-switch-user 'Смена пользователя'
+		;;
+	*)
+		fn logout system-log-out 'Logout'
+		fn shutdown system-shutdown 'Shutdown'
+		fn reboot system-reboot 'Reboot'
+		fn suspend system-suspend 'Suspend'
+		fn hibernate system-suspend-hibernate 'Hibernate'
+		fn hybrid-sleep system-suspend-hibernate 'Hybrid sleep'
+		fn switch-user system-switch-user 'Switch user'
+		;;
+	esac
+	[ $is_active_set -eq 0 ] &&
+		jsio 'ui.combobox_action.set_active(0)'
+
+	jsio 'ui.win_main.show_all()'
+
+	jsio : = 'Gtk.main()'
+	while jsio__read event_name; do
+		case $event_name in
+		do_action)
+			jsio action= 'ui.liststore_action.get_value(ui.combobox_action.get_active_iter()[1], 0)'
+			jsio result= 'ui.ckbox_remember_action.get_active()'
+			case $result in (true)
+				last_action_file_dir=${last_action_file%/*}
+				{
+					[ -d "$last_action_file_dir" ] || mkdir -p "$last_action_file_dir"
+				} && printf %s\\n "$action" > "$last_action_file"
+			esac
+			do_action "$action" 1 || exit_code=1
+			jsio 'Gtk.main_quit()'
+			;;
+		'')
+			jsio__read; break;;
+		esac
+		jsio 'ret()'
+	done
+	exit $exit_code
+elif [ $# -eq 1 ]; then
+	do_action "$1" || exit 1
+else
+	err_usage 'invalid number of arguments'
+fi
+
+exit 0

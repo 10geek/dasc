@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolbar>
+	<item file="mail_receive" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Получить" : "Get" ?>" action="A_RECEIVE_CUR"/>
+	<item file="mail_receive_all" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Получить Все" : "Get All" ?>" action="A_RECEIVE_ALL"/>
+	<separator/>
+	<item file="mail_compose" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Написать" : "Compose" ?>" action="A_COMPOSE_EMAIL"/>
+	<item file="mail_reply" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Ответить" : "Reply" ?>" action="A_REPLY_MESSAGE"/>
+	<item file="mail_forward" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Переслать" : "Forward" ?>" action="A_FORWARD"/>
+	<separator/>
+	<item file="trash_btn" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Корзина" : "Trash" ?>" action="A_TRASH"/>
+	<item file="spam_btn" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Спам" : "Spam" ?>" action="A_LEARN_SPAM"/>
+</toolbar>

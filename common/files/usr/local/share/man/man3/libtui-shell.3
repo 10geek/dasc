@@ -1,0 +1,185 @@
+.TH LIBTUI_SHELL 3 2018-11-13
+.nh
+.SH NAME
+libtui\-shell \- shell library for creating text-based user interfaces
+.SH FUNCTIONS
+.TP
+\fBui\fP \fItitle\fP \fIdescription\fP \fImenu\fP \fIcursor_position\fP
+.RS
+Performs the work of the user interface. If the argument \fImenu\fP is missing or contains no elements, then the \fIdescription\fP is displayed instead of the menu.
+.TP
+\fImenu\fP may contain the following elements:
+.RS
+.TP
+\fBi\fP\fIvariable_name\fP[\fB:\fP\fItext\fP]
+Text field
+.TP
+\fBp\fP\fIvariable_name\fP[\fB:\fP\fItext\fP]
+Text field for entering password
+.TP
+\fBc\fP\fIvariable_name\fP\fB:\fP\fItext\fP
+Checkbox. When clicked, sets the variable to 0 if the variable has a numeric value and is greater than 0, otherwise set to 1.
+.TP
+\fBm\fP\fIvariable_name\fP\fB:\fP\fItext_value\fP
+Checkbox for multiple selection. Adds or removes a value in the specified variable and uses a newline character as a values separator.
+.TP
+\fBr\fP\fIvariable_name\fP\fB:\fP\fItext_value\fP
+Radiobutton
+.TP
+\fBb\fP[\fItext_value\fP]
+Button. By pressing \fBUI_CHOICE\fP variable is set to the specified value and \fBui\fP function terminates.
+.TP
+\fBq\fP[\fItext\fP]
+Exit button. By pressing \fBUI_EVENT\fP variable is set to "exit" and \fBui\fP function terminates with code 1.
+.TP
+\fBh\fP[\fItext\fP]
+Header or delimiter if \fItext\fP of the header is not specified
+.TP
+\fBt\fP[\fItext\fP]
+Text line. Can be used to create an empty line.
+.RE
+.TP
+Menu elements attributes (specified on the next line after the element is declared):
+.RS
+.TP
+\fBv\fP[\fIvalue\fP]
+Overrides the value assigned to the variable. Can be used multiple times to pass a multiline value, except for the \fBm\fP element. For \fBc\fP elements, the value is converted to 0 or 1. Applies to elements: \fBc\fP, \fBm\fP, \fBr\fP, \fBb\fP.
+.TP
+\fBd\fP[\fItext\fP]
+Overrides the description that appears when you hover over an element. Can be used multiple times. Applies to all elements.
+.TP
+\fBs\fP
+Sets the initial cursor position on the element to which the attribute is applied. Applies to all elements.
+.RE
+.RE
+.TP
+\fBui_callback\fP [\fIui_function_arguments\fP] ...
+Callback function called each time before displaying the user interface by the \fBui\fP function. \fBui_callback\fP function is reset at the terminating of the \fBui\fP function and must be declared before calling \fBui\fP function.
+.TP
+\fBui_mode\fP \fIcommand\fP
+Switches the terminal to user interface mode and back.
+.RS
+Available commands:
+.TP
+\fBon\fP
+Saves the current terminal settings to the \fBUI_STTY_OLD_SETTINGS\fP variable and switches the terminal to the user interface mode. Called automatically when \fBui\fP function is called.
+.TP
+\fBoff\fP
+Applies the terminal settings saved by the \fBon\fP command and unsets the \fBUI_STTY_OLD_SETTINGS\fP variable
+.TP
+\fBreset\fP
+Resets the terminal mode to initial according to the \fBUI_MODE_INITIAL\fP value. This command should always be executed when the script exits (for example, using a signal handler).
+.RE
+.TP
+\fBui_input\fP
+Reads the keystroke and assigns the identifier of the pressed key to the \fBUI_INPUT\fP variable
+.SH VARIABLES
+.TP
+.B UI_ACTION
+.RS
+Action
+.TP
+Possible value:
+.B select
+.br
+.B search_prev
+.br
+.B search_next
+.br
+.B search_edit
+.br
+.B nav_home
+.br
+.B nav_end
+.br
+.B nav_up
+.br
+.B nav_down
+.br
+.B nav_page_up
+.br
+.B nav_page_down
+.br
+.B nav_prev_selectable
+.br
+.B nav_next_selectable
+.RE
+.TP
+.B UI_CHOICE
+See \fBui\fP function description
+.TP
+.B UI_DESCRIPTION
+Description displayed at the top of the user interface. At the beginning of the \fBui\fP function execution, the variable is set to the \fIdescription\fP argument value (see \fBui\fP function description) and can be changed by \fBui_callback\fP function.
+.TP
+.B UI_EVENT
+.RS
+Event
+.TP
+Possible value:
+.B select
+.br
+.B edit
+.br
+.B edit_complete
+.br
+.B search_edit
+.br
+.B search_edit_complete
+.br
+.B exit
+.RE
+.TP
+.B UI_INIT
+At the beginning of \fBui\fP function execution it is equal to 1, in other cases it is equal to 0
+.TP
+.B UI_INPUT
+See \fBui_input\fP function description
+.TP
+.B UI_MENU
+Menu. At the beginning of the \fBui\fP function execution, the variable is set to the \fImenu\fP argument value (see \fBui\fP function description) and can be changed by \fBui_callback\fP function.
+.TP
+.B UI_MENU_CURSOR_POS
+Cursor position. At the beginning of the \fBui\fP function execution, the variable is set to the \fIcursor_position\fP argument value (see \fBui\fP function description) and can be changed by \fBui_callback\fP function.
+.TP
+.B UI_MENU_HEIGHT_OLD
+Number of menu items at the previous iteration of the interface output loop in the function \fBui\fP
+.TP
+.B UI_MODE_INITIAL
+Initial terminal mode. 1 - user interface mode, 0 - normal mode. This variable is declared when the library is sourced. The variable is intended for internal use by the \fBui_mode\fP function.
+.TP
+.B UI_OUTPUT
+Contains data to output the interface to the terminal and shell script, executed after the interface output. The variable is intended for internal use by the \fBui\fP function.
+.TP
+.B UI_SEARCH
+Search field value
+.TP
+.B UI_STTY_OLD_SETTINGS
+See \fBui_mode\fP function description
+.TP
+.B UI_STTY_WIDTH
+Terminal width. If cannot be determined, then 80 will be used.
+.TP
+.B UI_STTY_HEIGHT
+Terminal height. If cannot be determined, then 25 will be used.
+.TP
+.B UI_TITLE
+Title. At the beginning of the \fBui\fP function execution, the variable is set to the \fItitle\fP argument value (see \fBui\fP function description) and can be changed by \fBui_callback\fP function.
+.TP
+.B UI_VALUE_L
+Part of the editing string before the cursor
+.TP
+.B UI_VALUE_R
+Part of the editing string after the cursor
+.TP
+.B UI_VAR_NAME
+The name of the variable that is assigned or will be assigned a value
+.SH FILES
+.TP
+.I "/usr/share/shell/tui.sh"
+Library file
+.SH EXAMPLE
+.I "/usr/share/doc/libtui\-shell/demo"
+.SH "SEE ALSO"
+.BR stty (1)
+.SH AUTHORS
+\fB10geek\fP

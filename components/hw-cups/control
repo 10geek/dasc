@@ -1,0 +1,16 @@
+name=Hardware / CUPS printing system
+name[ru]=Оборудование / Система печати CUPS
+
+conf/enable_network_access/type=boolean
+conf/enable_network_access/name=Enable network access
+conf/enable_network_access/name[ru]=Включить доступ по сети
+
+conf/enable_webui/type=boolean
+conf/enable_webui/name=Enable web interface
+conf/enable_webui/name[ru]=Включить веб-интерфейс
+
+conf/enable_webui_remote_access/type=boolean
+conf/enable_webui_remote_access/name=Allow remote access to the web interface
+conf/enable_webui_remote_access/name[ru]=Разрешить удалённый доступ к веб-интерфейсу
+conf/enable_webui_remote_access/description=If disabled, the web interface will be available only locally
+conf/enable_webui_remote_access/description[ru]=Если отключено, веб-интерфейс будет доступен только локально

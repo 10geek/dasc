@@ -1,0 +1,10 @@
+# KEYBOARD CONFIGURATION FILE
+
+# Consult the keyboard(5) manual page.
+
+XKBMODEL="pc105"
+XKBLAYOUT="<?awk print ENVIRON["CONF_XKBLAYOUT"] ?>"
+XKBVARIANT=","
+XKBOPTIONS="grp:alt_shift_toggle,grp:caps_toggle,grp_led:caps,lv3:lwin_switch,misc:typo"
+
+BACKSPACE="guess"

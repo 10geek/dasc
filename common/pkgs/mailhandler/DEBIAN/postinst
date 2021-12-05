@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+chmod 750 /var/lib/mailhandler &&
+chmod 750 /var/log/mailhandler &&
+chown :adm /var/log/mailhandler

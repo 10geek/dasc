@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Generating files from macro files
+#\............................................................................./
+find \
+	"$PREPDIR/etc/debcomp/userconf/desktop/mimeapps.d" \
+-type f -name '*.awm' -exec sh -c '{
+	awkmacro "$0" > "${0%.*}" &&
+	rm -f "$0"
+} || kill -INT "$PPID"' {} \; || exit

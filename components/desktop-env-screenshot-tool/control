@@ -1,0 +1,5 @@
+name=Desktop environment / Tool for getting screenshots (screengrab)
+name[ru]=Окружение рабочего стола / Инструмент для получения скриншотов (screengrab)
+
+depends/desktop-env
+after/desktop-env

@@ -1,0 +1,5 @@
+name=Desktop environment / Mail client (claws-mail)
+name[ru]=Окружение рабочего стола / Почтовый клиент (claws-mail)
+
+depends/desktop-env
+after/desktop-env

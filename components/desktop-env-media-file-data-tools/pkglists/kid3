@@ -1,0 +1,6 @@
+gstreamer1.0-alsa manual
+gstreamer1.0-plugins-good manual
+kid3-qt manual
+libqt5qml5 auto for_manual(kid3-qt) for(libqt5quick5 libqt5qmlmodels5)
+libqt5quick5 auto for_manual(kid3-qt) for(kid3-core)
+ocl-icd-libopencl1 auto for_manual(kid3-qt) for(libavutil56)

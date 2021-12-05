@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+
+window_id=$(xdotool search --limit 1 "$@") || exit
+if xwininfo -id "$window_id" | grep -qF 'Map State: IsViewable'; then
+	output=$(xdotool windowminimize "$window_id" 2>&1)
+else
+	output=$(xdotool windowactivate "$window_id" 2>&1)
+fi || {
+	exit_code=$?
+	[ -n "$output" ] && printf %s\\n "$0: xdotool: $output" >&2
+	exit $exit_code
+}

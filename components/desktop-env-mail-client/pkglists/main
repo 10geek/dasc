@@ -1,0 +1,9 @@
+claws-mail manual for_manual(claws-mail-dillo-viewer clawsker claws-mail-multi-notifier claws-mail-feeds-reader claws-mail-address-keeper claws-mail-themes) for(clawsker claws-mail-themes)
+claws-mail-address-keeper manual
+claws-mail-dillo-viewer manual
+claws-mail-feeds-reader manual
+claws-mail-multi-notifier manual
+claws-mail-themes manual
+clawsker manual
+claws-mail-i18n auto for_manual(claws-mail-dillo-viewer clawsker claws-mail-multi-notifier claws-mail-feeds-reader claws-mail claws-mail-address-keeper claws-mail-themes) for(claws-mail)
+libcanberra-gtk-module auto for_manual(claws-mail-multi-notifier) for(libcanberra-gtk0)

@@ -1,0 +1,8 @@
+name=Display server - Xorg
+name[ru]=Дисплейный сервер / Xorg
+
+# File /etc/default/keyboard contains the xorg keyboard configuration.
+# Probably the software from the `hw-base` component may be required for the
+# software from this component.
+depends/hw-base
+after/hw-base

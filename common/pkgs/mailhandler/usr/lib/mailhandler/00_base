@@ -1,0 +1,229 @@
+# Usage: mail_send_mbox [mbox_path]
+#
+# Examples:
+# mail_send_mbox < "$MAILFILE"
+# mail_send_mbox /var/mail/username < "$MAILFILE"
+mail_send_mbox() {
+	[ -z "$1" ] && set -- "$MAIL"
+	dotlockfile -m || return 1
+	{
+		putsn "From $HOSTNAME@$USER " && LC_ALL=C date '+%a %b %d %T %Y' &&
+		LC_ALL=C awk '/^>*From / { printf(">") } { print $0 }' &&
+		puts
+	} >> "$1"
+	if [ $? -eq 0 ]; then
+		set -- 0
+	else
+		set -- 1
+	fi
+	dotlockfile -mu || return 1
+	return $1
+}
+
+# Usage: mail_send_msmtp auth_user auth_password host port from
+#
+# Generate a configuration for the given mail address:
+# msmtp --configure username@ya.ru
+#
+# Example (for Yandex.Mail, see https://yandex.ru/support/mail-new/mail-clients.xml):
+# mail_send_msmtp username@ya.ru password smtp.yandex.ru 587 username@ya.ru < "$MAILFILE"
+mail_send_msmtp() {
+	PASSWORD=$2 msmtp \
+		--auth=on \
+		--tls=on \
+		--keepbcc=on \
+		--timeout=10 \
+		--read-recipients \
+		--host="$3" \
+		--port="$4" \
+		--from="$5" \
+		--user="$1" \
+		--passwordeval='cat <<- EOF
+		$PASSWORD
+		EOF
+		'
+}
+
+# Usage: mail_send_telegram telegram_bot_token chat_id
+# See telegram_send_message() for more details.
+mail_send_telegram() {
+	{
+		get_mail_headers
+		echo
+		get_mail_body_text
+	} | telegram_send_message "$@"
+}
+
+# Usage: mail_save_to_file path date_formatted_part
+#
+# Example:
+# mail_save_to_file ~/mail '/%Y/%m/%d/%Hh-%Mm-%Ss' < "$MAILFILE"
+mail_save_to_file() {
+	{ [ $# -lt 2 ] || {
+		set -- "$1" "$(date -- "+$2")"
+		{ [ -n "$2" ] && set -- "$1$2"; } ||
+			err 'mail_save_to_file(): `date'\'' utility outputs an empty string'
+	}; } &&
+	mkdir -p -- "$(dirname -- "$1")" && {
+		! [ -e "$1.eml" ] || {
+			set -- "$1" 1
+			while [ -e "$1.$2.eml" ]; do
+				set -- "$1" "$(($2 + 1))"
+			done
+			set -- "$1.$2"
+		}
+	} &&
+	cat > "$1.eml"
+}
+
+# Usage telegram_send_message telegram_bot_token chat_id
+#
+# Get the ID of the chat (replace TELEGRAM_BOT_TOKEN with your bot's token):
+# curl -fsSgL --max-redirs 10 --max-time 20 -- "https://api.telegram.org/botTELEGRAM_BOT_TOKEN/getUpdates"
+#
+# Example:
+# puts 'message text' | telegram_send_message 8125508021:8NqN9B5RGDNzs8THBxQZyKLWqzAqtyoSCBc 7815110274
+telegram_send_message() {
+	curl \
+		-fsSgL \
+		--max-redirs 10 \
+		--max-time 20 \
+		-X POST \
+		-d chat_id="$2" \
+		-d disable_web_page_preview=1 \
+		--data-urlencode text@- \
+		-- "https://api.telegram.org/bot$1/sendMessage" \
+		> /dev/null
+}
+
+# Usage: get_mail_header header_name [lowercase]
+#
+# Example:
+# get_mail_header to
+get_mail_header() {
+	LC_ALL=C awk -- '
+	function err(message, exit_code) {
+		print global__sh_func_name "(): " message | "cat 1>&2"; close("cat 1>&2")
+		if(exit_code != 0 || exit_code != "") {
+			sh_func_exit_code = exit_code
+			exit exit_code
+		}
+		return 1
+	}
+	BEGIN {
+		global__sh_func_name = "get_mail_header"
+		ARGC = 1
+		sh_func_exit_code = 1
+		header_value = ""
+		is_needed_header = 0
+		sub(/^[ \t\r\n\v\f]+/, "", ARGV[1]); sub(/[ \t\r\n\v\f]+$/, "", ARGV[1])
+		substr_len = length(ARGV[1]) + 1
+		if(substr_len == 1) err("header name is not specified", 1)
+		if(ARGV[1] !~ "^[ -9;-~]+$") err("header name contains invalid characters", 1)
+		ARGV[1] = tolower(ARGV[1])
+	} {
+		sub(/\r$/, "")
+		if($0 == "") exit
+		if(sub(/^[ \t\r\n\v\f]+/, "")) {
+			if(!is_needed_header) next
+			header_value = header_value $0
+		} else {
+			strlen = length($0)
+			if(strlen < substr_len) next
+			if(tolower(substr($0, 1, substr_len)) == ARGV[1] ":") {
+				is_needed_header = 1
+				sh_func_exit_code = 0
+				if(strlen == substr_len) header_value = " "
+				else header_value = substr($0, substr_len + 1)
+			} else is_needed_header = 0
+		}
+	} END {
+		if(header_value != "") {
+			gsub(/[ \t\r\n\v\f]+/, " ", header_value)
+			sub(/^ +/, "", header_value); sub(/ +$/, "", header_value)
+			if(ARGV[2] + 0) print tolower(header_value)
+			else print header_value
+		}
+		exit sh_func_exit_code
+	}' "$1" "$2" < "$MAILFILE"
+}
+
+# Usage: set_mail_header header_name header_value
+#
+# Example:
+# set_mail_header to admin@example.com < "$MAILFILE"
+set_mail_header() {
+	LC_ALL=C awk -- 'BEGIN {
+		ARGC = 1
+		is_needed_header = skip = 0
+		header_name_lower = tolower(ARGV[1])
+		substr_len = length(ARGV[1]) + 1
+		line_end = "\r"
+	} {
+		if(!skip) {
+			if(NR == 1 && $0 !~ /\r$/) line_end = ""
+			if($0 == "" || $0 == "\r") {
+				skip = 1
+				print ARGV[1] ": " ARGV[2] line_end
+			} else if(is_needed_header) {
+				if($0 ~ /^[ \t\r\n\v\f]/) next
+				skip = 1
+				print ARGV[1] ": " ARGV[2] line_end
+			} else if(tolower(substr($0, 1, substr_len)) == header_name_lower ":") {
+				is_needed_header = 1
+				next
+			}
+		}
+		print $0
+	} END {
+		if(!skip) print ARGV[1] ": " ARGV[2] line_end
+	}' "$1" "$2"
+}
+
+get_mail_headers() {
+	sed -n 's/\r$//; /^$/q; p' "$MAILFILE"
+}
+
+get_mail_body() {
+	sed 's/\r$//; 1,/^$/d' "$MAILFILE"
+}
+
+get_mail_body_text() {
+	case $(get_mail_header content-transfer-encoding 1) in
+	base64)
+		get_mail_body | base64 -d;;
+	quoted-printable)
+		get_mail_body | perl -MMIME::QuotedPrint -pe '$_=MIME::QuotedPrint::decode($_)';;
+	*)
+		get_mail_body;;
+	esac
+}
+
+is_mail_local() {
+	set -- "$(get_mail_header to)"
+	[ -z "$1" ] || [ ":$1" = ":$USER" ] || {
+		[ ":${1##*@}" != ":$1" ] && {
+			[ ":${1##*@}" = ":localhost" ] || [ ":${1##*@}" = ":$HOSTNAME" ]
+		}
+	}
+}
+
+# Usage: retry number_of_attempts [seconds_between_attempts] eval_string
+#
+# Example:
+# retry 10 'mail_send_msmtp password smtp.yandex.ru 587 username@ya.ru username@ya.ru'
+retry() {
+	if [ $# -gt 2 ]; then
+		set -- "$1" "$3" "$2"
+	else
+		set -- "$1" "$2" 1
+	fi
+	while :; do
+		eval " $2" && return 0
+		set -- "$1" "$2" "$3" "$?"
+		[ $1 -gt 1 ] || break
+		sleep "$3"
+		set -- "$(($1 - 1))" "$2" "$3" "$4"
+	done
+	return "$4"
+}

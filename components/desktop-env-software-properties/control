@@ -1,0 +1,5 @@
+name=Desktop environment / Utility for managing software sources and updates
+name[ru]=Окружение рабочего стола / Утилита для управления источниками ПО и обновлениями (software-properties-gtk)
+
+depends/desktop-env
+after/desktop-env

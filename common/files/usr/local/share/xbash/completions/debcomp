@@ -1,0 +1,100 @@
+xbash_comp_debcomp() {
+	xbash_is_func_self_invoked && {
+	case $1 in
+	get_packages)
+		dpkg --get-selections | LC_ALL=C awk -- 'BEGIN { ARGC = 1 } {
+			pkgname = $1
+			sub(/:[^:]+$/, "", pkgname)
+			if($1 == pkgname ":" ARGV[1]) {
+				print pkgname
+				next
+			}
+			print $1
+		}' "$(dpkg --print-architecture)"
+		;;
+	esac; return; }
+
+	local context result exec_path bool_opts arg_opts IFS=$'\n'
+	if xbash_parse_comp_argv context '[cvh]'; then
+		return 2
+	elif [ ${context[1]} -eq 1 ]; then
+		xbash_compspecial_parse_help || return 1
+	elif [ ${context[0]} -eq 0 ]; then
+		COMP_VALUES=("$(
+			"${COMP_ARGV[0]}" --help | xbash_awk 'BEGIN {
+				state = 1
+				ARGV[1] = tolower(ARGV[1])
+			} {
+				if(state == 1) {
+					if($0 == "Commands:") state = 2
+				} else if(state == 2) {
+					if(!sub(/^ +/, "") || $0 == "") exit
+					if(xbash_startswith(tolower($1), ARGV[1])) print $1
+				}
+			}' "$COMP_VALUE" | xbash_menu
+		)") || return 1
+	else
+		exec_path=${COMP_ARGV[0]}
+		COMP_ARGV=("${COMP_ARGV[@]:COMP_ARGC - context[0]}")
+		COMP_ARGC=${context[0]}
+		case ${COMP_ARGV[0]} in
+		install) bool_opts=ycoOs;;
+		rollback) bool_opts=y;;
+		userconf) bool_opts=f;;
+		verify-pkglists) bool_opts=f;;
+		analyze-deps) bool_opts=ratdp; arg_opts=e;;
+		esac
+		[ -n "$arg_opts" ] && arg_opts="[$arg_opts]"
+		if xbash_parse_comp_argv context "[${bool_opts}h]" "$arg_opts"; then
+			case ${COMP_ARGV[0]}:${context[2]} in
+			analyze-deps:e)
+				result=$(
+					xbash_comp_debcomp get_packages | xbash_awk 'BEGIN {
+						sub(/.*[\t\n ]/, "", ARGV[1])
+						ARGV[1] = tolower(ARGV[1])
+					} {
+						if(xbash_startswith(tolower($0), ARGV[1])) print $0
+					}' "$COMP_VALUE" | xbash_menu multi
+				) || return 1
+				COMP_VALUES=("$(
+					printf %s "$result" | LC_ALL=C awk -- 'BEGIN {
+						ORS = ""; ARGC = 1
+						sub(/[^\t\n ]+$/, "", ARGV[1])
+						print ARGV[1]
+					} {
+						if(NR != 1) print " "
+						print $0
+					}' "$COMP_VALUE"
+				)")
+				[ "${COMP_VALUES[0]}" != "$COMP_VALUE" ] ||
+					COMP_VALUES=("${COMP_VALUES[0]} ")
+				;;
+			*) return 2;;
+			esac
+		elif [ ${context[1]} -eq 1 ]; then
+			xbash_compspecial_parse_help "$exec_path" '"${COMP_ARGV[0]}" --help' || return 1
+		else case ${COMP_ARGV[0]} in
+		userconf)
+			case ${context[0]} in
+			0)
+				COMP_VALUES=("$(
+					[ -d /etc/debcomp/userconf ] || exit
+					cd /etc/debcomp/userconf || exit
+					find . -path './*' -prune -type d | sed 's/^\.\///' |
+					xbash_istartswith "$COMP_VALUE" | xbash_menu
+				)") || return 1
+				;;
+			*) return 0;;
+			esac
+			;;
+		analyze-deps)
+			COMP_VALUES=($(
+				xbash_comp_debcomp get_packages |
+				xbash_istartswith "$COMP_VALUE" | xbash_menu multi
+			)) || return 1
+			;;
+		install|rollback|verify-pkglists|get-config) return 0;;
+		*) return 2;;
+		esac; fi
+	fi
+}

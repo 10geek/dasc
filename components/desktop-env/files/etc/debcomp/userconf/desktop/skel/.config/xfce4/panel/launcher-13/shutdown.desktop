@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Shutdown
+Name[ru]=Завершение работы
+Comment=
+Exec=gsesctl shutdown
+Icon=system-shutdown
+Path=
+Terminal=false
+StartupNotify=false

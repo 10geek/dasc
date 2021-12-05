@@ -1,0 +1,20 @@
+# For more information about available functions, see /usr/lib/mailhandler/00_base
+# For usage examples, see /usr/share/doc/mailhandler/examples/.mailhandlerrc
+
+# Maximum mailbox size (in MiB)
+MBOX_MAX_SIZE=10
+
+process_mail() {<?awk
+	if(ENVIRON["USER_ID"] == 0) {
+	?>
+	# Redirect mail to the first user from wheel group
+	set -- "$(getent group | LC_ALL=C awk -F: '$1 == "wheel" && $4 != "" { print $4; exit }')"
+	[ -n "$1" ] && {
+		su - "$1" -s /bin/sh -c /usr/sbin/sendmail < "$MAILFILE"
+		return 0
+	}
+<?awk } ?>
+	process_local_mail || return 1
+
+	return 0
+}

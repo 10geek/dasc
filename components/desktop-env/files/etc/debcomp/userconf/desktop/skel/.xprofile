@@ -1,0 +1,8 @@
+# Normalize value of the DISPLAY environment variable
+DISPLAY=$(printf %s "$DISPLAY" | sed 's/\(:[0-9][0-9]*\)$/\1.0/')
+
+# Make GTK scrollbars always visible
+export GTK_OVERLAY_SCROLLING=0
+
+# Disable use of ATK Bridge by GTK applications
+export NO_AT_BRIDGE=1

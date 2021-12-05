@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+exec x11vnc -rfbport 0 -rfbportv6 0 -accept '' -once -loop10000 -connect "$@"

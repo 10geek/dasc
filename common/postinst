@@ -1,0 +1,117 @@
+#!/usr/bin/env sh
+
+is_group_exist() {
+	getent group | LC_ALL=C awk -F: -- '
+	BEGIN { ARGC = exit_code = 1 }
+	$1 == ARGV[1] { exit_code = 0; exit }
+	END { exit exit_code }' "$1"
+}
+is_user_in_group() {
+	id -Gn -- "$1" | LC_ALL=C awk -- '
+	BEGIN { ARGC = exit_code = 1 } {
+		for(i = 1; i <= NF; i++) if($i == ARGV[1]) {
+			exit_code = 0; exit
+		}
+	} END { exit exit_code }' "$2"
+}
+
+
+#/*****************************************************************************\
+# Performing operations on users and groups
+#\............................................................................./
+initial_user_id=$(
+	. /etc/adduser.conf &&
+	getent passwd | LC_ALL=C awk -F: -- 'BEGIN {
+		ARGC = 1
+		first_uid = int(ARGV[1] + 0)
+	}
+	$3 == first_uid {
+		if($1 == "" || $6 !~ "^/") exit 1
+		print $1 ":" $6 ":" $3
+		exit
+	}' "$FIRST_UID"
+) || exit
+[ -n "$initial_user_id" ] && {
+	initial_user_name=${initial_user_id%%:*}; initial_user_id=${initial_user_id#*:}
+	initial_user_home=${initial_user_id%%:*}; initial_user_id=${initial_user_id#*:}
+}
+debcomp setvar initial_user_id "$initial_user_id" || exit
+
+is_group_exist wheel || {
+	debcomp setvar remove_wheel_group 1 &&
+	addgroup --system wheel
+} || exit
+
+[ -n "$initial_user_id" ] && {
+	home_dir_mode=$(
+		. "$PREPDIR/etc/adduser.conf" &&
+		printf %s "$DIR_MODE"
+	) || exit
+	chmod "$home_dir_mode" "$initial_user_home" || exit
+
+	[ $CONF_ADD_INITIAL_USER_TO_WHEEL -eq 1 ] && {
+		is_user_in_group "$initial_user_name" wheel || {
+			debcomp setvar remove_initial_user_from_wheel 1 &&
+			adduser -- "$initial_user_name" wheel
+		} || exit
+	}
+
+	[ -e "/var/spool/mail/$initial_user_name" ] || {
+		touch "/var/spool/mail/$initial_user_name" &&
+		chmod 660 "/var/spool/mail/$initial_user_name" &&
+		chown "$initial_user_name:mail" "/var/spool/mail/$initial_user_name"
+	} || exit
+}
+
+[ -e /var/spool/mail/root ] || {
+	touch /var/spool/mail/root &&
+	chmod 660 /var/spool/mail/root &&
+	chown root:mail /var/spool/mail/root
+} || exit
+
+chmod 700 "$HOME" || exit
+
+#/*****************************************************************************\
+# Disabling certain scripts in /etc/update-motd.d
+#\............................................................................./
+update_motd_disabled_scripts=$(
+	find //etc/update-motd.d -type f -perm /111 |
+	LC_ALL=C awk '$0 ~ "^//etc/update-motd\\.d/[0-9]+-(header|help-text|motd-news|release-upgrade|unattended-upgrades)$" { print substr($0, 2) }'
+)
+debcomp setvar update_motd_disabled_scripts "$update_motd_disabled_scripts" || exit
+[ -z "$update_motd_disabled_scripts" ] ||
+printf %s\\n "$update_motd_disabled_scripts" |
+while IFS= read -r file; do
+	chmod -x "$file" || exit
+done || exit
+
+#/*****************************************************************************\
+# Saving old debconf selections of the `tzdata` package and reconfiguring it
+#\............................................................................./
+debconf_selections=$(debconf-get-selections | LC_ALL=C awk '$1 == "tzdata"')
+[ -z "$debconf_selections" ] && {
+	debcomp log -e 'unable to get debconf selections for package `tzdata'\'
+	exit 1
+}
+printf %s\\n "$debconf_selections" | debcomp setvar debconf_selections_tzdata || exit
+
+dpkg-reconfigure tzdata || exit
+
+#/*****************************************************************************\
+# Cleaning up logs
+#\............................................................................./
+debcomp emptydir /var/log/chrony || exit
+[ $CONF_REMOVE_INSTALLER_LOGS -eq 0 ] ||
+	debcomp remove /var/log/installer || exit
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+systemctl daemon-reload || exit
+
+for service in chrony unattended-upgrades; do
+	! systemctl -q is-active "${service}.service" ||
+		systemctl restart "${service}.service" || exit
+done
+
+sysctl -p || exit

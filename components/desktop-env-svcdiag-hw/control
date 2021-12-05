@@ -1,0 +1,11 @@
+name=Desktop environment / Service and diagnostics / Hardware
+name[ru]=Окружение рабочего стола / Сервис и диагностика / Оборудование
+
+depends/desktop-env
+after/desktop-env
+depends/svcdiag-hw
+after/svcdiag-hw
+
+# `gsmartcontrol` package depends on `smartmontools` package
+depends/hw-base
+after/hw-base

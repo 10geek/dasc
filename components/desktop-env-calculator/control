@@ -1,0 +1,5 @@
+name=Desktop environment / Calculator (SpeedCrunch)
+name[ru]=Окружение рабочего стола / Калькулятор (SpeedCrunch)
+
+depends/desktop-env
+after/desktop-env

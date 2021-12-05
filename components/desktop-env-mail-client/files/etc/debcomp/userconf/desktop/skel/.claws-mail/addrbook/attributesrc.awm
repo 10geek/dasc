@@ -1,0 +1,23 @@
+<?awk
+if(ENVIRON["AWM_LANG"] == "ru") {
+	?>дата рождения
+адрес
+телефон
+мобильный телефон
+организация
+рабочий адрес
+рабочий телефон
+факс
+веб-сайт<?awk
+} else {
+	?>date of birth
+address
+phone
+mobile phone
+organization
+office address
+office phone
+fax
+website<?awk
+}
+?>

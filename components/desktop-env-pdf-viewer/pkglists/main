@@ -1,0 +1,5 @@
+qpdfview manual
+qpdfview-djvu-plugin auto for_manual(qpdfview) for(qpdfview)
+qpdfview-pdf-poppler-plugin auto for_manual(qpdfview) for(qpdfview)
+qpdfview-ps-plugin auto for_manual(qpdfview) for(qpdfview)
+qpdfview-translations auto for_manual(qpdfview) for(qpdfview)

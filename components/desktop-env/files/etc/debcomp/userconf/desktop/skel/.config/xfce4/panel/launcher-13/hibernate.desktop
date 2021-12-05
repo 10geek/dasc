@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Hibernate
+Name[ru]=Гибернация
+Comment=
+Exec=gsesctl hibernate
+Icon=system-suspend-hibernate
+Path=
+Terminal=false
+StartupNotify=false

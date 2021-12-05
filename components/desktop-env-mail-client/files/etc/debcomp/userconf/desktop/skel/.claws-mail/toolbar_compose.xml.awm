@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolbar>
+	<item file="mail_send" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Отправить" : "Send" ?>" action="A_SEND"/>
+	<item file="mail_send_queue" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Отправить позже" : "Send later" ?>" action="A_SEND_LATER"/>
+	<item file="mail_draft" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Черновик" : "Draft" ?>" action="A_DRAFT"/>
+	<separator/>
+	<item file="insert_file" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Вставить" : "Insert" ?>" action="A_INSERT"/>
+	<item file="mail_attach" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Вложить" : "Attach" ?>" action="A_ATTACH"/>
+	<separator/>
+	<item file="address_book" text="<?awk print ENVIRON["AWM_LANG"] == "ru" ? "Адрес" : "Address" ?>" action="A_ADDRBOOK"/>
+</toolbar>

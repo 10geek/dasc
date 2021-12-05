@@ -1,0 +1,5 @@
+name=Desktop environment / Graphical interface for installing packages (synaptic, gdebi)
+name[ru]=Окружение рабочего стола / Графический интерфейс для установки пакетов (synaptic, gdebi)
+
+depends/desktop-env
+after/desktop-env

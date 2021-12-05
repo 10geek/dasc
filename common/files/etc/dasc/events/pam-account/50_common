@@ -1,0 +1,39 @@
+#!/usr/bin/env sh
+
+[ ":$PAM_USER" = :root ] || {
+	userdata_dir=/var/local/lib/dasc/userdata/$PAM_USER
+	{
+		{ [ -e "$userdata_dir" ] || mkdir -pm 750 "$userdata_dir"; } &&
+		date +%s > "$userdata_dir/last-sess-time.new" &&
+		mv -f "$userdata_dir/last-sess-time.new" "$userdata_dir/last-sess-time"
+	} || exit 1
+
+	# Prevent starting processes by the user while its deletion is in progress
+	username_file=/var/local/lib/dasc/userdel-deleting-user
+	! { [ -e /etc/.pwd.lock ] || [ -e /etc/passwd.lock ]; } ||
+	! [ -f "$username_file" ] || {
+		username=$(cat "$username_file") || exit 1
+		[ ":$username" != ":$PAM_USER" ]
+	} ||
+	{ lslocks -runo PID,COMMAND,PATH || echo e; } |
+	LC_ALL=C awk '
+	$0 == "e" { exit 1 }
+	$2 == "userdel" && ( \
+		$3 == "/etc/.pwd.lock" || \
+		$3 == "/etc/passwd.lock" || \
+		$3 == "/etc/passwd" \
+	) {
+		proc_path = "/proc/" $1 "/status"
+		while((getline < proc_path) > 0) {
+			if(tolower(substr($0, 1, 4)) != "uid:") { continue }
+			$0 = substr($0, 5)
+			if($2 == 0) exit 1
+		}
+		close(proc_path)
+	}' || {
+		printf %s\\n "Account \`$PAM_USER' is locked"
+		exit 1
+	}
+}
+
+exit 0

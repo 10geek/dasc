@@ -1,0 +1,3158 @@
+#!/usr/bin/env sh
+#
+# teleporter - script for managing remote connections and mounting
+# remote filesystems
+#
+# Version: 2.1.0 (22/06/2021)
+#
+# Copyright (c) 2015-2021 10geek
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+usage() {
+	case $LANG_CODE_MSG in
+	ru)
+		cat << END
+Использование: $SCRIPT_NAME [опции] ... [имя_подключения_или_url] [аргументы]
+Формат URL: протокол://[пользователь@]хост[:порт][путь]
+При запуске без аргументов используется диалоговый режим.
+
+Конфигурационные файлы подключений и ключи аутентификации находятся в каталогах
+~/.$SCRIPT_NAME/conf и ~/.$SCRIPT_NAME/keys
+
+Для автоматического ввода пароля его можно передать через
+переменную окружения PASSWORD:
+PASSWORD=yourpassword $SCRIPT_NAME sftp://root@storage.lan:2022/root
+
+Опции:
+  -l               Выводит таблицу существующих подключений в следующем формате:
+                     статус имя_подключения
+                   Поле "статус" может принимать следующие значения:
+                     * - несохранённое подключение
+                     + - активное сохранённое подключение
+                     - - неактивное сохранённое подключение
+                     ! - файловая система недоступна
+  -u               Отмонтировать файловую систему. Если файловая система не
+                   указана, будут отмонтированы все файловые системы.
+  -f               Отмонтировать файловую систему, даже если она используется
+                   каким-либо процессом
+  -i путь          Использовать указанный файл ключа аутентификации
+  -p протокол      Использовать указанный протокол вместо протокола по умолчанию
+  -o имя=значение  Переопределить значение опции конфигурации соединения. Может
+                   использоваться несколько раз.
+  -d путь          Использовать указанный путь к каталогу с файлами конфигурации
+  -a               Примонтировать все файловые системы с указанной
+                   опцией automount
+  -v, --version    Показать версию и выйти
+  -h, --help       Показать справку и выйти
+END
+		;;
+	*)
+		cat << END
+Usage: $SCRIPT_NAME [options] ... [connection_name_or_url] [arguments]
+URL format: protocol://[user@]host[:port][path]
+When run without arguments, the interactive mode is used.
+
+Connection configuration files and authentication keys are placed in directories
+~/.$SCRIPT_NAME/conf and ~/.$SCRIPT_NAME/keys
+
+To automatically enter a password, you can pass it through
+environment variable PASSWORD:
+PASSWORD=yourpassword $SCRIPT_NAME sftp://root@storage.lan:2022/root
+
+Options:
+  -l               Displays a table of existing connections in the following
+                   format:
+                     status connection_name
+                   The "status" field can have the following values:
+                     * - unsaved connection
+                     + - active saved connection
+                     - - inactive saved connection
+                     ! - file system is not available
+  -u               Unmount the file system. If no file system is specified,
+                   all file systems will be unmounted.
+  -f               Unmount the file system even if it is being used by a process
+  -i path          Use specified authentication key file
+  -p protocol      Use the specified protocol instead of default
+  -o name=value    Override the value of the connection configuration option.
+                   Can be used multiple times.
+  -d path          Use the specified directory path with the configuration files
+  -a               Mount all file systems with the specified automount option
+  -v, --version    Output version information and exit
+  -h, --help       Display this help and exit
+END
+		;;
+	esac
+}
+usage_error() {
+	if [ $# -gt 1 ]; then
+		l10n_msg "$@" >&2
+	elif [ $# -eq 1 ]; then
+		printf %s\\n "$1" >&2
+	fi
+	usage | head -n1 >&2
+	l10n_msg ru "Запустите \`$SCRIPT_NAME --help' для вывода подробной информации" "Try \`$SCRIPT_NAME --help' for more information" >&2
+	exit 1
+}
+err() {
+	printf %s "$SCRIPT_NAME: " >&2
+	if [ $# -gt 2 ]; then
+		if [ $(($# % 2)) -eq 0 ]; then
+			eval "shift; l10n_msg \"\$@\" >&2; exit $(printf %s "$1" | tr -dc 0-9)"
+		else
+			l10n_msg "$@" >&2
+			return 1
+		fi
+	elif [ $# -eq 2 ]; then
+		printf %s\\n "$2" >&2
+		exit $(printf %s "$1" | tr -dc 0-9)
+	else
+		printf %s\\n "$1" >&2
+		return 1
+	fi
+}
+checkval() {
+	[ $# -lt 2 ] && return 1
+	case $2 in
+	n) [ $# -eq 2 ] && [ -n "$1" ];;
+	z) [ $# -eq 2 ] && [ -z "$1" ];;
+	*)
+		LC_ALL=C awk -- '
+		function validate_number(_i) {
+			if(ARGV[2] == "i") {
+				_o = int(_i + 0)
+				if(_o "" != _i) _o = ""
+			} else if(ARGV[2] == "f") {
+				if(_i !~ /^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$/ || _i == "-0") _o = ""
+				else _o = _i + 0
+			} else return ""
+			return _o
+		}
+		BEGIN {
+			if(ARGC < 3) exit 1
+			if(ARGV[2] == "i" || ARGV[2] == "f") {
+				if(ARGC > 5) exit 1
+				num = ARGV[1] + 0
+				ARGV[1] = validate_number(ARGV[1])
+				if(ARGV[1] == "") exit 1
+				if(ARGC > 3 && ARGV[3] != "") {
+					num_min = validate_number(ARGV[3])
+					if(num_min == "" || num < num_min) exit 1
+				}
+				if(ARGC > 4 && ARGV[4] != "") {
+					num_max = validate_number(ARGV[4])
+					if(num_max == "" || num > num_max) exit 1
+				}
+				exit 0
+			} else {
+				if(ARGC != 4) exit 1
+				if(ARGV[2] == "r") exit ARGV[1] !~ ARGV[3]
+				else if(ARGV[2] == "nr") exit ARGV[1] ~ ARGV[3]
+			}
+			exit 1
+		}' "$@" && { [ "$2" != i ] || [ "$(($1 + 0))" = "$1" ]; }
+		;;
+	esac
+}
+checkopt() {
+	{ [ $# -ne 0 ] && checkval "$OPTARG" "$@"; } || usage_error ru "Значение \`$OPTARG' является некорректным для опции -$OPT" "Value \`$OPTARG' is invalid for option -$OPT"
+}
+checkutil() {
+	_OLD_IFS=$IFS; IFS=:
+	if [ "$1" = -s ]; then
+		_NOT_FOUND_UTILS=.
+		shift
+	else
+		unset _NOT_FOUND_UTILS
+	fi
+	[ "$1" = -- ] && shift
+	while [ $# -ne 0 ]; do
+		{
+			[ -n "$PATH" ] && for _UTIL_PATH in $PATH; do
+				[ -x "$_UTIL_PATH/$1" ] && break
+			done
+		} || {
+			if [ "$_NOT_FOUND_UTILS" = . ]; then
+				IFS=$_OLD_IFS
+				return 1
+			else
+				_NOT_FOUND_UTILS=$_NOT_FOUND_UTILS', `'$1\'
+			fi
+		}
+		shift
+	done
+	IFS=$_OLD_IFS
+	[ "$_NOT_FOUND_UTILS" = . ] || [ -z "$_NOT_FOUND_UTILS" ] || {
+		case $LANG_CODE_MSG in
+		ru)
+			err "не удалось найти $(printf %s "$_NOT_FOUND_UTILS" | sed 's/^, //; s/\(.*\)'\'', `/\1'\'' и `/') в системе, PATH=$PATH"
+			;;
+		*)
+			err "$(printf %s "$_NOT_FOUND_UTILS" | sed 's/^, //; s/\(.*\)'\'', `/\1'\'' and `/') is not found in system, PATH=$PATH"
+			;;
+		esac
+		return 1
+	}
+}
+getsubprocs() {
+	ps -Ao ppid,pid | awk -- 'BEGIN {
+		for(i = 1; i < ARGC; i++) ppids[ARGV[i]] = ""
+		ARGC = 1
+	}
+	$1 in ppids { print $2 }' "$@"
+}
+killsubprocs() {
+	[ $# -lt 2 ] && return 1
+	_TMP=$1; shift
+	kill -STOP "$@" > /dev/null 2>&1
+	killsubprocs "$_TMP" $(getsubprocs "$@")
+	kill "-$_TMP" "$@" > /dev/null 2>&1
+	kill -CONT "$@" > /dev/null 2>&1
+}
+get_lock() {
+	[ -n "$1" ] || err 1 'get_lock: lock path is not specified'
+	flock -n "$1/pid" sh -c 'PID=$(grep -x '\''[1-9][0-9]*'\'' "$0/pid" | head -n1); [ -n "$PID" ] && ! ps -Ao pid | awk '\''BEGIN { ARGC = 1; exit_code = 1 } $1 == ARGV[1] { exit_code = 0; exit } END { exit exit_code }'\'' "$PID" && rm -rf "$0"' "$1" 2>/dev/null
+	_I=10; while :; do
+		if mkdir "$1" 2>/dev/null; then
+			flock "$1/pid" sh -c '{ printf %s "$0" > "$1/pid" && [ "$(cat "$1/pid")" = "$0" ]; } || { echo 1; rm -rf "$1"; exit; }; echo 0' $$ "$1" 2>/dev/null |
+			awk 'BEGIN { exit_code = 2 } /^[0-9]+$/ { exit_code = $0 } END { exit exit_code }'
+			case $? in
+			1) break;;
+			2)
+				{
+					printf %s $$ > "$1/pid" &&
+					[ "$(cat "$1/pid")" = $$ ]
+				} || {
+					rm -rf "$1"
+					break
+				}
+				;;
+			esac
+			return 0
+		elif [ -d "$1" ]; then
+			[ "$2" = 1 ] && break
+			_I=10
+		else
+			_I=$((_I - 1))
+			[ $_I -le 0 ] && break
+		fi
+		sleep 1 2>/dev/null
+	done
+	[ "$3" = 1 ] && return 1
+	err 1 "get_lock: unable to get lock \`$1'"
+}
+release_lock() {
+	{ [ -n "$1" ] && [ -f "$1/pid" ]; } || return 0
+	flock "$1/pid" sh -c '[ "$(cat "$1/pid")" = "$0" ] && rm -rf "$1"; echo 0' $$ "$1" 2>/dev/null |
+	awk 'BEGIN { exit_code = 1 } $0 == "0" { exit_code = 0; exit } END { exit exit_code }' ||
+	{ [ "$(cat "$1/pid" 2>/dev/null)" = $$ ] && rm -rf "$1"; }
+}
+get_mountpoint() {
+	LC_ALL=C df -P -- "$1" | awk 'BEGIN { exit_code = 1; cut = 5 } NR == 1 { next } {
+		while(cut) {
+			if(!sub(/[\1-\40]*[^\1-\40]+[\1-\40]*/, "")) next; cut--
+		}
+		exit_code = 0
+		print $0
+	} END { exit exit_code }'
+}
+is_exists() {
+	eval "$(awk -- 'BEGIN {
+		ARGC = 1; ORS = ""
+		sub(/\/$/, "", ARGV[1]); gsub(/\47/, "\47\134\47\47", ARGV[1])
+		basename = ARGV[1]
+		sub(/.*\//, "", basename); gsub(/\n/, "/", basename)
+		sub("/[^\57]+$", "", ARGV[1])
+		print "[ -d \47" ARGV[1] "\47 ] && scandir"
+		if(ARGV[3] + 0) print " -L"
+		print " \47" ARGV[1] "\47"
+		if(ARGV[2] != "") print " -type \"$2\""
+		print " | grep -qxF -- \47" basename "\47"
+	}' "$1" "$2" "$3")"
+}
+is_mountpoint() {
+	if [ $# -gt 1 ]; then
+		[ "$(get_mountpoint "$1" 2>/dev/null && echo .)" != "$2" ]
+	else
+		[ "$(get_mountpoint "$1" 2>/dev/null && echo .)" != "$(eval "get_mountpoint $(normalize_path "$1/.." -) 2>/dev/null" && echo .)" ]
+	fi
+}
+l10n_msg() {
+	while [ $# -gt 1 ]; do
+		[ "$1" = "$LANG_CODE_MSG" ] && {
+			shift; printf %s\\n "$1"
+			return
+		}
+		shift 2
+	done
+	printf %s\\n "$1"
+}
+normalize_path() {
+	[ -n "$2" ] && [ "$2" != - ] && {
+		eval "$2=$(normalize_path "$1" -)"
+		return
+	}
+	LC_ALL=C awk 'BEGIN {
+		path = ARGV[2] "/"; if(ARGV[2] !~ /^\//) path = ARGV[1] "/" path
+		gsub(/\0/, "", path); gsub(/\/\/+/, "/", path); gsub(/\/(\.\/)+/, "/", path)
+		while(sub(/\/[^\/]+\/\.\.\//, "/", path)) continue
+		sub(/\/\.\.\//, "/", path)
+		if(path != "/") sub(/\/$/, "", path)
+		if(ARGV[3] != "") {
+			gsub(/\47/, "\47\134\47\47", path)
+			print "\47" path "\47"
+		} else print path
+	}' "$PWD" "$1" "$2"
+}
+scandir() {
+	[ $# -eq 2 ] && expr "$2" : '[A-Za-z_][A-Za-z0-9_]*$' > /dev/null && {
+		eval "$2=$(printf %s "$1" | sed 's/'\''/'\''\\'\'\''/g; s/^/'\''/; s/$/'\''/; s/\//\n/g')"
+		return $?
+	}
+	if cd -- "$1"; then
+		shift; unset FIND_PRE_ARGS
+		[ "$1" = -L ] && { FIND_PRE_ARGS=-L; shift; }
+		find $FIND_PRE_ARGS . -path './*' -prune "$@"
+		echo $?
+	else echo 1; fi | awk 'BEGIN { exit_code = 1 } {
+		if(NR != 1) {
+			if(sub(/^.*\//, "", last_line)) { if(NR != 2) print filename; filename = last_line }
+			else filename = filename "/" last_line
+		}
+		last_line = $0
+	} END { if(NR) { if(NR > 1) print filename; exit_code = $0 } exit exit_code }'
+}
+sendpass() {
+	_PASSWORD=$2 $(expr "$1" : '.*s' > /dev/null && echo setsid) expect -c '
+	log_user 0
+	set timeout 120
+	set pass_sended 0
+	trap {
+		exec kill [exp_pid]
+		lassign [wait] pid spawn_id is_os_error exit_code
+		exit $exit_code
+	} {SIGHUP SIGINT SIGQUIT SIGABRT SIGPIPE SIGTERM}
+	trap {
+		set rows [stty rows]
+		set cols [stty columns]
+		stty rows $rows columns $cols < $spawn_out(slave,name)
+	} WINCH
+	spawn -ignore HUP'"$(
+		ARG=3
+		while [ $ARG -le $# ]; do
+			eval 'printf %s "${'$ARG'}"' | od -vAn -tx1 | awk 'BEGIN {
+				printf(" [encoding convertfrom utf-8 \"")
+			} {
+				for(i = 1; i <= NF; i++) printf("\\u00%s", $i)
+			} END {
+				printf("\"]")
+			}'
+			ARG=$((ARG + 1))
+		done
+	)"'
+	while 1 { expect {
+		{*[Pp]ass*[:>]} { if {$pass_sended == 0} {
+			set timeout -1
+			set pass_sended 1
+			send -- "$env(_PASSWORD)\r"
+			expect "\n"
+			'"$(expr "$1" : '.*i' > /dev/null && printf %s\\n 'interact; break')"'
+		} else {puts -nonewline $expect_out(buffer)} }
+		-re "\[^\r]*\r\n" {puts -nonewline $expect_out(buffer)}
+		timeout {
+			send_user "sendpass: timeout waiting for prompt\n"
+			exec kill [exp_pid]
+			break
+		}
+		eof {break}
+	} }
+	lassign [wait] pid spawn_id is_os_error exit_code
+	exit $exit_code' 2>&-
+}
+shell_escape() {
+	awk -- '
+	function print_escaped(_in) {
+		gsub(/\0/, "", _in)
+		gsub(/\47/, "\47\134\47\47", _in)
+		printf("%s", _in)
+	}
+	BEGIN {
+		argc = ARGC; ARGC = 1
+		wrap_in_quotes = argc < 2 || (ARGV[1] != "" && ARGV[1] != 0)
+		if(wrap_in_quotes) printf("\47")
+		if(argc > 2) {
+			for(i = 2; i < argc; i++) {
+				if(i != 2) {
+					if(wrap_in_quotes) printf("\47 \47")
+					else printf(" ")
+				}
+				print_escaped(ARGV[i])
+			}
+			if(wrap_in_quotes) printf("\47")
+			exit
+		}
+	} {
+		if(NR != 1) { print_escaped(last_line); print "" }
+		last_line = $0
+	} END {
+		if(argc > 2) exit
+		if(NR) print_escaped(last_line)
+		if(wrap_in_quotes) printf("\47")
+	}' "$@"
+}
+ui_select_file_callback() { :; }
+ui_select_file() {
+	unset UI_MENU_CURSOR_POS UI_SELECT_FILE_JUMP_TO
+	UI_SELECT_FILE_EXIT=0
+	UI_SELECT_FILE_OLDPWD=$PWD
+	[ -n "$3" ] && cd -- "$3" 2>/dev/null
+	while :; do
+		ui_callback() {
+			if [ -z "$UI_EVENT" ] || [ "$UI_EVENT" = exit ]; then
+				case $UI_INPUT in
+				'27 O D'|'127') UI_EVENT=select; UI_CHOICE=..;;
+				'27 O C') UI_ACTION=select;;
+				'32') UI_SELECT_FILE_EXIT=1;;
+				esac
+			elif [ "$UI_EVENT:$UI_VAR_NAME" = edit_complete:PWD ]; then
+				printf '\33[?25l'
+				unset UI_EVENT
+				cd -- "$UI_VALUE_L$UI_VALUE_R" 2>/dev/null && {
+					UI_EVENT=select
+					unset UI_CHOICE
+				}
+			fi
+		}
+		ui "$1" "$2" "iPWD
+			$(
+			[ "$PWD" = / ] || printf 'b..\ns\n'
+			scandir . | while read -r ESCAPED_FILENAME; do
+				scandir "$ESCAPED_FILENAME" FILENAME
+				[ -d "$FILENAME" ]; IS_FILE=$?
+				! [ -h "$FILENAME" ]; IS_LINK=$?
+				printf %s\\n "$ESCAPED_FILENAME$IS_FILE$IS_LINK"
+			done | LC_ALL=C sort |
+			awk -- 'BEGIN {
+				ARGC = 1; selected_dir = 0; selected_file = 0
+				dirs_count = 0; files_count = 0
+				sub(/.*\//, "", ARGV[1])
+				gsub(/\n/, "/", ARGV[1])
+			} {
+				sub(/^\.\//, "")
+				is_dir = $0 ~ /0.$/; is_link = $0 ~ /1$/
+				sub(/..$/, "")
+				if($0 == ARGV[1]) {
+					if(is_dir) selected_dir = dirs_count + 1
+					else selected_file = files_count + 1
+				}
+				button_label = $0; gsub(/\//, "\357\277\275", button_label)
+				if(is_dir) dirs[++dirs_count] = "b" (is_link ? "~" : "/") button_label "\nv" $0
+				else files[++files_count] = "b" (is_link ? "@" : " ") button_label "\nv" $0
+			} END {
+				for(i = 1; i <= dirs_count; i++) {
+					print dirs[i]
+					if(i == 1 || i == selected_dir) print "s"
+				}
+				for(i = 1; i <= files_count; i++) {
+					print files[i]
+					if((!dirs_count && i == 1) || i == selected_file) print "s"
+				}
+			}' "$UI_SELECT_FILE_JUMP_TO"
+		)" "$UI_MENU_CURSOR_POS" || break
+		unset UI_SELECT_FILE_JUMP_TO
+		if [ "$UI_CHOICE" = .. ]; then
+			[ "$PWD" = / ] && continue
+			unset UI_MENU_CURSOR_POS
+			UI_SELECT_FILE_JUMP_TO=$PWD
+			cd ..
+		elif [ -n "$UI_CHOICE" ]; then
+			scandir "$UI_CHOICE" UI_CHOICE
+			if [ "$PWD" = / ]; then
+				UI_CHOICE=/$UI_CHOICE
+			else
+				UI_CHOICE=$PWD/$UI_CHOICE
+			fi
+			{ [ -f "$UI_CHOICE" ] || [ $UI_SELECT_FILE_EXIT -eq 1 ]; } &&
+				ui_select_file_callback "$@" && break
+			UI_SELECT_FILE_EXIT=0
+			[ -d "$UI_CHOICE" ] &&
+				cd "$UI_CHOICE" 2>/dev/null && unset UI_MENU_CURSOR_POS
+		fi
+	done
+	cd "$UI_SELECT_FILE_OLDPWD"
+	ui_select_file_callback() { :; }
+	[ "$UI_EVENT" != exit ]
+}
+
+automount() {
+	get_lock "$LOCKDIR"
+	_TMP=$(
+		scandir "$CONF_DIR_PATH" -type f | grep -vF / | while read -r _CONN_NAME; do
+			awk '/^[\1-\40]*automount=[^0]/ { sub(/.*\//, "", ARGV[1]); print ARGV[1]; exit }' "$CONF_DIR_PATH/$_CONN_NAME"
+		done
+	)
+	release_lock "$LOCKDIR"
+	[ -z "$_TMP" ] && {
+		err ru 'нет подключений с указанной опцией `automount'\' 'there is no connections with a specified `automount'\'' option'
+	}
+	_OLD_IFS=$IFS
+	eval "$(printf 'IFS=\47\n\47')"
+	for _CONN_NAME in $_TMP; do
+		IFS=$_OLD_IFS
+		[ -e "$MOUNTS_PATH/$_CONN_NAME" ] && is_mountpoint "$MOUNTS_PATH/$_CONN_NAME" && continue
+		connect a "$_CONN_NAME"
+	done < /dev/null
+	IFS=$_OLD_IFS
+	return 0
+}
+conn_list() {
+	{
+		scandir "$CONF_DIR_PATH" -type f | grep -vF /
+		echo
+		scandir "$MOUNTS_PATH" | grep -vF / | {
+			MOUNTS_PATH_MOUNTPOINT=$(get_mountpoint "$MOUNTS_PATH"; echo .)
+			while read -r MOUNT_NAME; do
+				if ! [ -e "$MOUNTS_PATH/$MOUNT_NAME" ]; then
+					printf %s\\n "!$MOUNT_NAME"
+				elif is_mountpoint "$MOUNTS_PATH/$MOUNT_NAME" "$MOUNTS_PATH_MOUNTPOINT"; then
+					printf %s\\n "+$MOUNT_NAME"
+				fi
+			done
+		}
+	} | LC_ALL=C awk 'BEGIN { section = 1 }
+	section == 1 {
+		if($0 == "") { section++; next }
+		connections[$0] = "-"
+	} section == 2 {
+		status = substr($0, 1, 1)
+		sub(/^./, "")
+		if(status == "!") connections[$0] = "!"
+		else if($0 in connections) connections[$0] = "+"
+		else connections[$0] = "*"
+	} END {
+		for(conn_name in connections) print connections[conn_name] " " conn_name
+	}' | LC_ALL=C sort
+}
+connect() {
+	unset \
+		CONN_COMMAND \
+		CONN_MOUNTPOINT \
+		CONN_NAME \
+		CONN_OPTS \
+		CONN_URL
+	_HAS_LOCK=0
+	_IS_AUTOMOUNT=0
+	case $1 in
+	a|c)
+		CONN_NAME=$2
+		_HAS_LOCK=1
+		get_lock "$LOCKDIR"
+		parse_conf get_conn_opts "$CONF_DIR_PATH/$CONN_NAME" || {
+			release_lock "$LOCKDIR"
+			return 1
+		}
+		[ "$1" = a ] && _IS_AUTOMOUNT=1
+		;;
+	u)
+		CONN_URL=$2
+		;;
+	esac
+	shift 2
+	{
+		if [ -n "$CONN_NAME" ]; then
+			parse_conf parse_conn_url "$CONF_DIR_PATH/$CONN_NAME" &&
+			{ [ $CONN_IS_OPTS_SPECIFIED -eq 1 ] || parse_conf get_unspecified_opts "$CONF_DIR_PATH/$CONN_NAME" use_cli_opts; }
+		else
+			parse_conf parse_conn_url &&
+			{ [ $CONN_IS_OPTS_SPECIFIED -eq 1 ] || parse_conf get_unspecified_opts '' use_cli_opts; }
+		fi
+	} || {
+		release_lock "$LOCKDIR"
+		return 1
+	}
+	[ $_IS_AUTOMOUNT -eq 1 ] && {
+		protocol_hook options_list "$CONN_URL_PROTO" | grep -qxF automount || return 0
+	}
+	[ -n "$CONN_NAME" ] && [ -z "$USE_CONN_PROTO" ] &&
+		protocol_hook protocols_list "$CONN_URL_PROTO" nonmountable | grep -qxF "$CONN_URL_PROTO" &&
+		CONN_URL_PROTO=$(
+			protocol_hook protocols_list "$CONN_URL_PROTO" mountable |
+			awk 'BEGIN { ARGC = 1 } { print $0; exit } END { if(!NR) print ARGV[1] }' "$CONN_URL_PROTO"
+		)
+	{
+		filter_conf_vars f &&
+		protocol_hook pre_connect "$CONN_URL_PROTO" "$@" && {
+			{ protocol_hook protocols_list "$CONN_URL_PROTO" nonmountable | grep -qxF "$CONN_URL_PROTO" || {
+				[ $_HAS_LOCK -eq 0 ] && get_lock "$LOCKDIR"
+				_HAS_LOCK=1
+				if [ -n "$CONN_NAME" ]; then
+					CONN_MOUNTPOINT=$MOUNTS_PATH/$CONN_NAME
+					if [ -e "$CONN_MOUNTPOINT" ]; then
+						{
+							{ [ -d "$CONN_MOUNTPOINT" ] && [ ! -h "$CONN_MOUNTPOINT" ]; } ||
+								err ru "не удалось создать точку монтирования: \`$CONN_MOUNTPOINT' уже существует и не является каталогом" "failed to create mountpoint: \`$CONN_MOUNTPOINT' already exists and is not a directory"
+						} && {
+							if is_mountpoint "$CONN_MOUNTPOINT"; then
+								err ru "не удалось создать точку монтирования: \`$CONN_MOUNTPOINT' уже является точкой монтирования" "failed to create mount point: \ '$CONN_MOUNTPOINT ' is already a mountpoint"
+							else
+								ONEXIT_UNMOUNT=$CONN_MOUNTPOINT
+								ONEXIT_UNMOUNT_PROTO=$CONN_URL_PROTO
+							fi
+						}
+					else
+						{ ! is_exists "$CONN_MOUNTPOINT" || unmount f "$CONN_MOUNTPOINT" "$CONN_URL_PROTO"; } && {
+							ONEXIT_UNMOUNT=$CONN_MOUNTPOINT
+							ONEXIT_UNMOUNT_PROTO=$CONN_URL_PROTO
+							mkdir "$CONN_MOUNTPOINT" || {
+								unset ONEXIT_UNMOUNT ONEXIT_UNMOUNT_PROTO
+								false
+							}
+						}
+					fi
+				else
+					SUCCESS=1
+					while :; do
+						CONN_MOUNTPOINT=$(tr -dc A-Za-z0-9 < /dev/urandom | dd bs=1 count=8 2>/dev/null)
+						[ -n "$CONN_MOUNTPOINT" ] || {
+							SUCCESS=0
+							err ru 'не удалось сгенерировать имя точки монтирования' 'failed to generate the name of the mountpoint'
+							break
+						}
+						CONN_MOUNTPOINT=$CONN_URL_PROTO:$CONN_URL_USER$(
+							[ -n "$CONN_URL_USER" ] && printf @
+							printf %s "$CONN_URL_HOST"
+							[ -n "$CONN_URL_PORT" ] && printf :
+						)${CONN_URL_PORT}_$CONN_MOUNTPOINT
+						is_exists "$MOUNTS_PATH/$CONN_MOUNTPOINT" || [ -e "$CONF_DIR_PATH/$CONN_MOUNTPOINT" ] || break
+					done
+					CONN_MOUNTPOINT=$MOUNTS_PATH/$CONN_MOUNTPOINT
+					[ $SUCCESS -eq 1 ] && {
+						ONEXIT_UNMOUNT=$CONN_MOUNTPOINT
+						ONEXIT_UNMOUNT_PROTO=$CONN_URL_PROTO
+						mkdir "$CONN_MOUNTPOINT" || {
+							unset ONEXIT_UNMOUNT ONEXIT_UNMOUNT_PROTO
+							false
+						}
+					}
+				fi
+			}; } && {
+				[ -z "$CONN_MOUNTPOINT" ] && {
+					release_lock "$LOCKDIR"
+					_HAS_LOCK=0
+				}
+				{ eval "$CONN_COMMAND" && {
+					[ -z "$CONN_MOUNTPOINT" ] || {
+						is_mountpoint "$CONN_MOUNTPOINT" && {
+							unset ONEXIT_UNMOUNT ONEXIT_UNMOUNT_PROTO
+							printf %s\\n "$CONN_MOUNTPOINT"; true
+						}
+					}
+				}; } || {
+					[ -n "$CONN_MOUNTPOINT" ] && {
+						unmount f "$CONN_MOUNTPOINT" "$CONN_URL_PROTO"
+						unset ONEXIT_UNMOUNT ONEXIT_UNMOUNT_PROTO
+						[ $_HAS_LOCK -eq 1 ] && release_lock "$LOCKDIR"
+						err ru "не удалось примонтировать файловую систему \`$CONN_MOUNTPOINT'" "failed to mount filesystem \`$CONN_MOUNTPOINT'"
+					}
+				}
+			}
+		}
+	} || {
+		[ $_HAS_LOCK -eq 1 ] && {
+			release_lock "$LOCKDIR"
+			_HAS_LOCK=0
+		}
+		if [ -n "$CONN_NAME" ]; then
+			err ru "подключение к \`$CONN_NAME' прервано" "connection to \`$CONN_NAME' aborted"
+		else
+			err ru "подключение к \`$CONN_URL' прервано" "connection to \`$CONN_URL' aborted"
+		fi
+		return 1
+	}
+	[ $_HAS_LOCK -eq 1 ] && release_lock "$LOCKDIR"
+	return 0
+}
+filter_conf_vars() {
+	[ "$1" = f ] || [ $UI_INIT -eq 1 ] || { [ -n "$UI_VAR_NAME" ] && { [ -z "$UI_EVENT" ] || [ "$UI_EVENT" = edit_complete ]; }; } || return 0
+	protocol_hook get_conf_vars_filter "$CONN_URL_PROTO"
+	eval "$(
+		VARS=$(
+			printf %s\\n CONN_URL_PROTO CONN_URL_USER CONN_URL_HOST CONN_URL_PORT CONN_URL_PATH UI_VALUE_L UI_VALUE_R
+			protocol_hook options_list "$CONN_URL_PROTO" | awk '{ print "CONN_OPT_" toupper($0) }'
+		)
+		export $VARS
+		LC_ALL=C awk -- 'BEGIN {
+			if(ARGV[1] == "") ARGV[2] = ""
+			for(i = 2; i < ARGC; i++) {
+				if(ARGV[i] == ARGV[2])
+					v[ARGV[i]] = ENVIRON["UI_VALUE_L"] ENVIRON["UI_VALUE_R"]
+				else
+					v[ARGV[i]] = ENVIRON[ARGV[i]]
+			}
+			ARGC = 1
+			sub(/\/.*/, "", v["CONN_URL_USER"])
+			if(match(v["CONN_URL_HOST"], /[A-Fa-f0-9:]*:[A-Fa-f0-9:]*/))
+				v["CONN_URL_HOST"] = "[" substr(v["CONN_URL_HOST"], RSTART, RLENGTH) "]"
+			else if(match(v["CONN_URL_HOST"], /(([A-Za-z0-9][A-Za-z0-9_-]*)?[A-Za-z0-9](\.([A-Za-z0-9][A-Za-z0-9_-]*)?[A-Za-z0-9])*|\[[A-Fa-f0-9:]+\])/))
+				v["CONN_URL_HOST"] = substr(v["CONN_URL_HOST"], RSTART, RLENGTH)
+			else
+				v["CONN_URL_HOST"] = "localhost"
+			if(match(v["CONN_URL_PORT"], /[1-9][0-9]*/))
+				v["CONN_URL_PORT"] = substr(v["CONN_URL_PORT"], RSTART, RLENGTH)
+			else
+				v["CONN_URL_PORT"] = ""
+			if(v["CONN_URL_PATH"] != "" && v["CONN_URL_PATH"] !~ /^\//)
+				v["CONN_URL_PATH"] = "/" v["CONN_URL_PATH"]
+			'"$CONF_VARS_FILTER"'
+			for(var_name in v) {
+				if(var_name == ARGV[2]) {
+					if(v[var_name] == ENVIRON["UI_VALUE_L"] ENVIRON["UI_VALUE_R"]) continue
+				} else if(v[var_name] == ENVIRON[var_name]) continue
+				gsub(/\0/, "", v[var_name]); gsub(/\47/, "\47\134\47\47", v[var_name])
+				if(var_name == ARGV[2])
+					print "UI_VALUE_L=\47" v[var_name] "\47; unset UI_VALUE_R"
+				else
+					print var_name "=\47" v[var_name] "\47"
+			}
+		}' "$([ "$1" = f ] || printf %s "$UI_EVENT")" "$UI_VAR_NAME" $VARS
+	)"
+}
+gen_conf() {
+	CONN_CONF=$(
+		{
+			printf %s "url=$CONN_URL_PROTO://"
+			[ -n "$CONN_URL_USER" ] && printf %s "$CONN_URL_USER@"
+			printf %s "$CONN_URL_HOST"
+			[ -n "$CONN_URL_PORT" ] && printf %s ":$CONN_URL_PORT"
+			[ -n "$CONN_URL_PATH" ] && printf %s "$CONN_URL_PATH"
+		} | awk '{ print NR == 1 ? $0 : "." $0 }'
+		eval "$(protocol_hook options_list "$CONN_URL_PROTO" | awk '{
+			if($0 == "automount")
+				print "[ -z \"$CONN_OPT_AUTOMOUNT\" ] || [ \"$CONN_OPT_AUTOMOUNT\" = 0 ] || printf %s\134\134n automount=1"
+			else {
+				var_name = "CONN_OPT_" toupper($0)
+				print "[ -n \"$" var_name "\" ] && printf %s\134\134n \"" $0 "=$" var_name "\" | awk \47{ print NR == 1 ? $0 : \".\" $0 }\47"
+			}
+		}')"
+	)
+}
+get_url_by_conn_name() {
+	if expr "$1" : '.*/' > /dev/null; then
+		eval "_CONN_NAME=$(basename -- "$1" | shell_escape 1)"
+	else
+		_CONN_NAME=$1
+	fi
+	if [ -f "$CONF_DIR_PATH/$_CONN_NAME" ]; then
+		URL_BY_CONN_NAME=$(LC_ALL=C awk -- 'BEGIN { exit_code = 10 } {
+			sub(/^[\1-\40]+/, "")
+			if($0 == "" || $0 ~ /^#/) next
+			if(sub(/^url=/, "")) {
+				if(!match($0, "^[A-Za-z][A-Za-z0-9+.-]*://?([^\n/]+@)?(([A-Za-z0-9][A-Za-z0-9_-]*)?[A-Za-z0-9](\\.([A-Za-z0-9][A-Za-z0-9_-]*)?[A-Za-z0-9])*|\\[[A-Fa-f0-9:]+\\])(:[1-9][0-9]*)?")) {
+					exit_code = 11; exit
+				}
+				if($0 ~ /^[A-Za-z][A-Za-z0-9+.-]*:\/[^/]/) {
+					sub(/:\//, "://")
+					RLENGTH--
+				}
+				$0 = substr($0, 1, RLENGTH)
+				match($0, /^[A-Za-z][A-Za-z0-9+.-]*:\/\//)
+				printf("%s", tolower(substr($0, 1, RLENGTH)))
+				$0 = substr($0, RLENGTH + 1)
+				if(match($0, "^[^/]+@")) {
+					printf("%s", substr($0, 1, RLENGTH))
+					$0 = substr($0, RLENGTH + 1)
+				}
+				print tolower($0)
+				exit_code = 0; exit
+			}
+		} END { exit exit_code }' "$CONF_DIR_PATH/$_CONN_NAME")
+		case $? in
+		0) return 0;;
+		10) err ru "не удалось получить URL для подключения \`$_CONN_NAME': отсутствует опция \`url' в файле конфигурации" "failed to get URL for connection \`$_CONN_NAME': missing option \`url' in the configuration file";;
+		11) err ru "не удалось получить URL для подключения \`$_CONN_NAME': некорректный формат URL" "failed to get URL for connection \`$_CONN_NAME': incorrect URL format";;
+		*) err ru "не удалось получить URL для подключения \`$_CONN_NAME'" "failed to get URL for connection \`$_CONN_NAME'";;
+		esac
+	else
+		URL_BY_CONN_NAME=$(LC_ALL=C awk -- 'BEGIN {
+			if(!match(ARGV[1], "^[a-z][a-z0-9+.-]*:([^\n/]+@)?(([a-z0-9][a-z0-9_-]*)?[a-z0-9](\\.([a-z0-9][a-z0-9_-]*)?[a-z0-9])*|\\[[a-f0-9:]+\\])(:[1-9][0-9]*)?_[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]$")) exit 10
+			sub(/:/, "://", ARGV[1])
+			print substr(ARGV[1], 1, length(ARGV[1]) - 9)
+		}' "$_CONN_NAME")
+		case $? in
+		0) return 0;;
+		10) err ru "не удалось получить URL для подключения \`$_CONN_NAME': некорректное имя точки монтирования" "failed to get URL for connection \`$_CONN_NAME': invalid mount point";;
+		*) err ru "не удалось получить URL для подключения \`$_CONN_NAME'" "failed to get URL for connection \`$_CONN_NAME'";;
+		esac
+	fi
+}
+get_window_geometry() {
+	{
+		if [ "$2" = root ]; then
+			LC_ALL=C xwininfo -root
+		else
+			LC_ALL=C xwininfo
+		fi
+	} | awk 'BEGIN { x = y = w = h = 0 } {
+		sub("^[ \t]+", ""); $0 = tolower($0)
+		if(sub("^absolute upper-left x:", "")) x = $1 + 0
+		else if(sub("^absolute upper-left y:", "")) y = $1 + 0
+		else if(sub("^width:", "")) w = $1 + 0
+		else if(sub("^height:", "")) h = $1 + 0
+	} END {
+		if(!w) exit 1
+		'"$1"'
+	}'
+}
+parse_conf() {
+	if [ -n "$2" ]; then
+		_ERR_MSG_PART_CONF_FILE=" $(l10n_msg ru 'в файле конфигурации' 'in configuration file') \`$2'"
+	else
+		unset _ERR_MSG_PART_CONF_FILE
+	fi
+	{ [ "$1" = get_conn_opts ] || [ -z "$1" ]; } && {
+		unset CONN_OPTS
+		[ -f "$2" ] || {
+			err ru "не найден файл конфигурации \`$2'" "configuration file is not found \`$2'"
+			return 1
+		}
+		eval "$(LC_ALL=C awk -- '
+		function put_opt() {
+			if(opt_name == "") return
+			if(length(opt_value) > 65536) {
+				print "err \"'"$(l10n_msg ru 'слишком длинное значение опции$_ERR_MSG_PART_CONF_FILE, строка' 'option value is too long$_ERR_MSG_PART_CONF_FILE, line')"' " NR "\""
+				next
+			}
+			gsub(/\0/, "", opt_value); gsub(/\47/, "\47\134\47\47", opt_value)
+			if(opt_name == "url") print "CONN_URL=\47" opt_value "\47"
+			else {
+				opts_count++
+				if(opts_count > 128) {
+					print "err \"'"$(l10n_msg ru 'слишком большое количество опций' 'too many options')"'$_ERR_MSG_PART_CONF_FILE\""
+					exit
+				}
+				print "CONN_OPTS=${CONN_OPTS}" opt_name "\47 \47"
+				print "CONN_OPT_" toupper(opt_name) "=\47" opt_value "\47"
+			}
+		}
+		function syntax_error() {
+			opt_name = ""
+			print "err \"'"$(l10n_msg ru 'ошибка синтаксиса$_ERR_MSG_PART_CONF_FILE, строка' 'syntax error$_ERR_MSG_PART_CONF_FILE, line')"' " NR "\""
+			next
+		}
+		BEGIN { opts_count = 0; opt_name = "" } {
+			sub(/^[\1-\40]+/, "")
+			if($0 == "" || $0 ~ /^#/) next
+			if(sub(/^\./, "")) {
+				if(opt_name == "") syntax_error()
+				opt_value = opt_value "\n" $0
+			} else if(match($0, /^[a-z0-9_]+=/) && RLENGTH <= 256) {
+				put_opt()
+				opt_name = substr($0, 1, RLENGTH - 1)
+				if(length(opt_name) > 128) syntax_error()
+				opt_value = substr($0, RLENGTH + 1)
+			} else syntax_error()
+		} END { put_opt() }' "$2")" || return 1
+		[ -n "$CONN_URL" ] || {
+			err ru "отсутствует опция \`url'$_ERR_MSG_PART_CONF_FILE" "missing \`url' option$_ERR_MSG_PART_CONF_FILE"
+			return 1
+		}
+	}
+	{ [ "$1" = parse_conn_url ] || [ -z "$1" ]; } && {
+		parse_conn_url "$CONN_URL" || {
+			err ru "некорректный URL$_ERR_MSG_PART_CONF_FILE: \`$CONN_URL'" "invalid URL$_ERR_MSG_PART_CONF_FILE: \`$CONN_URL'"
+			return 1
+		}
+		protocol_hook protocols_list_all | grep -qxF "$CONN_URL_PROTO" || {
+			err ru "неподдерживаемый протокол$_ERR_MSG_PART_CONF_FILE: $CONN_URL_PROTO" "unsupported protocol$_ERR_MSG_PART_CONF_FILE: $CONN_URL_PROTO"
+			return 1
+		}
+		[ -n "$2" ] && [ -n "$USE_CONN_PROTO" ] && {
+			protocol_hook protocols_list "$CONN_URL_PROTO" | grep -qxF "$USE_CONN_PROTO" || {
+				err ru "неподдерживаемый протокол для подключения \`$2': $USE_CONN_PROTO" "unsupported protocol for connection \`$2': $USE_CONN_PROTO"
+				return 1
+			}
+			CONN_URL_PROTO=$USE_CONN_PROTO
+		}
+	}
+	{ [ "$1" = get_unspecified_opts ] || [ -z "$1" ]; } && {
+		eval "$(protocol_hook options_list "$CONN_URL_PROTO" | awk -- 'BEGIN {
+			is_cli_opts = 0
+			for(i = 2; i < ARGC; i++) {
+				if(ARGV[i] == "") {
+					if(ARGV[1] != "use_cli_opts") break
+					is_cli_opts = 1
+					continue
+				}
+				options_specified[ARGV[i]] = is_cli_opts
+			}
+			ARGC = 1
+		} {
+			options_list[$0] = ""
+			var_name_part = toupper($0)
+			if(!($0 in options_specified)) print "unset CONN_OPT_" var_name_part
+			else if(options_specified[$0]) print "CONN_OPT_" var_name_part "=$CONN_OPT_CLI_" var_name_part
+		} END {
+			for(i in options_specified) {
+				if(i in options_list) continue
+				print "err \"'"$(l10n_msg ru 'лишняя опция содключения' 'unnecessary connection option')"'" (options_specified[i] ? "" : "$_ERR_MSG_PART_CONF_FILE") ": \134`" i "\47\""
+			}
+		}' "$3" $CONN_OPTS '' $CONN_OPTS_CLI)"
+	}
+	return 0
+}
+parse_conn_url() {
+	eval "$(LC_ALL=C awk -- '
+	function extract_var(_var_name, _is_required, _tolower, _cut_left, _cut_right, _regexp) {
+		if(_var_name == "") {
+			if(!sub(_regexp, "", ARGV[1]) && _is_required) { print "return 1"; exit }
+			return 0
+		}
+		if(!match(ARGV[1], _regexp)) {
+			if(_is_required) { print "return 1"; exit }
+			print "unset " _var_name
+			return 0
+		}
+		_tmp = substr(ARGV[1], RSTART + _cut_left, RLENGTH - _cut_left - _cut_right)
+		if(_tolower) _tmp = tolower(_tmp)
+		gsub(/\0/, "", _tmp); gsub(/\47/, "\47\134\47\47", _tmp)
+		ARGV[1] = substr(ARGV[1], 1, RSTART - 1) substr(ARGV[1], RSTART + RLENGTH)
+		print _var_name "=\47" _tmp "\47"
+		return 1
+	}
+	BEGIN {
+		extract_var("CONN_URL_PROTO", 1, 1, 0, 0, "^[A-Za-z][A-Za-z0-9+.-]*")
+		extract_var("", 1, 0, 0, 0, "^://?")
+		extract_var("CONN_URL_PATH", 0, 0, 0, 0, "/.*")
+		extract_var("CONN_URL_USER", 0, 0, 0, 1, "^[^\n]+@")
+		extract_var("CONN_URL_PORT", 0, 0, 1, 0, ":[1-9][0-9]*$")
+		if(!extract_var("CONN_URL_HOST", 0, 1, 0, 0, "^([A-Za-z0-9][A-Za-z0-9_-]*)?[A-Za-z0-9](\\.([A-Za-z0-9][A-Za-z0-9_-]*)?[A-Za-z0-9])*$"))
+			extract_var("CONN_URL_HOST", 1, 1, 1, 1, "^\\[[A-Fa-f0-9:]+\\]$")
+	}' "$1")"
+}
+unmount() {
+	{
+		{
+			is_exists "$2" || err ru "каталог \`$2' не существует" "directory \`$2' does not exist"
+		} && { ! is_mountpoint "$2" || {
+			{
+				{
+					if [ $# -lt 3 ]; then
+						get_url_by_conn_name "$2" &&
+						_PROTO=$(printf %s "$URL_BY_CONN_NAME" | sed 's/:.*//')
+					else
+						_PROTO=$3
+					fi && [ -n "$_PROTO" ] &&
+					protocol_hook protocols_list_all | grep -qxF "$_PROTO"
+				} || err ru "неподдерживаемый протокол: $_PROTO" "unsupported protocol: $_PROTO"
+			} && {
+				protocol_hook unmount "$_PROTO" "$1" "$2"
+				! is_mountpoint "$2"
+			}
+		}; } &&
+		rmdir "$2"
+	} || err ru "не удалось отмонтировать файловую систему \`$2'" "failed to unmount filesystem \`$2'"
+}
+unmount_all() {
+	conn_list | grep -v ^- | sed 's/^..//' | {
+		SUCCESS=1
+		while read -r MOUNT_NAME; do
+			unmount "$1" "$MOUNTS_PATH/$MOUNT_NAME" || SUCCESS=0
+		done
+		[ $SUCCESS -eq 1 ]
+	}
+}
+
+protocol_hook() {
+	if [ "$1" = protocols_list_all ]; then
+		printf %s\\n sftp ssh ftp smb rdp vnc vnci
+	else case $2 in
+	sftp|ssh)
+		case $1 in
+		protocols_list)
+			{ [ $# -lt 3 ] || [ "$3" = mountable ]; } &&
+				printf %s\\n sftp
+			{ [ $# -lt 3 ] || [ "$3" = nonmountable ]; } &&
+				printf %s\\n ssh
+			;;
+		options_list)
+			printf %s\\n password use_compression ssh_x_forward disable_known_hosts sshfs_args ssh_args automount
+			;;
+		pre_connect)
+			checkutil ssh || return 1
+			unset CONN_KEY_FILE
+			[ -n "$PASSWORD" ] && CONN_OPT_PASSWORD=$PASSWORD
+			[ -n "$CONN_OPT_PASSWORD" ] && {
+				checkutil expect || return 1
+				if [ "$CONN_URL_PROTO" = sftp ]; then
+					CONN_COMMAND='sendpass sn "$CONN_OPT_PASSWORD" '
+				else
+					CONN_COMMAND='sendpass i "$CONN_OPT_PASSWORD" '
+				fi
+			}
+			if [ -n "$KEY_FILE" ]; then
+				CONN_KEY_FILE=$KEY_FILE
+			elif [ -n "$CONN_NAME" ] && [ -e "$KEYS_DIR_PATH/$CONN_NAME" ]; then
+				CONN_KEY_FILE=$KEYS_DIR_PATH/$CONN_NAME
+			fi
+			_SSH_COMMAND='ssh'
+			[ "$CONN_OPT_COMPRESSION_LEVEL" = 1 ] && _SSH_COMMAND=$_SSH_COMMAND' -C'
+			_SSH_COMMAND=$_SSH_COMMAND' -oNumberOfPasswordPrompts=1 -oStrictHostKeyChecking=no'
+			[ "$CONN_OPT_DISABLE_KNOWN_HOSTS" = 1 ] && _SSH_COMMAND=$_SSH_COMMAND' -oUserKnownHostsFile=/dev/null'
+			if [ -n "$CONN_KEY_FILE" ]; then
+				_SSH_COMMAND=$_SSH_COMMAND' -oPasswordAuthentication=no -i "$CONN_KEY_FILE"'
+			else
+				_SSH_COMMAND=$_SSH_COMMAND' -oPubkeyAuthentication=no'
+			fi
+			case $CONN_URL_PROTO in
+			sftp)
+				checkutil fusermount setsid sshfs || return 1
+				_SSH_COMMAND=$(eval "shell_escape 1 $_SSH_COMMAND")' "$0" "$@"'
+				[ -n "$CONN_OPT_SSH_ARGS" ] && _SSH_COMMAND=$_SSH_COMMAND' '$CONN_OPT_SSH_ARGS
+				export _SSH_COMMAND
+				[ -n "$CONN_OPT_PASSWORD" ] || CONN_COMMAND=$CONN_COMMAND'setsid '
+				CONN_COMMAND=$CONN_COMMAND'sshfs -ocache=no,ssh_command="sh -c $(printf '\''eval\t"$_SSH_COMMAND"'\'')"'
+				[ -n "$CONN_URL_PORT" ] && CONN_COMMAND=$CONN_COMMAND' -p "$CONN_URL_PORT"'
+				[ -n "$CONN_OPT_SSHFS_ARGS" ] && CONN_COMMAND=$CONN_COMMAND' '$CONN_OPT_SSHFS_ARGS
+				CONN_COMMAND=$CONN_COMMAND' "$@" -- "'
+				[ -n "$CONN_URL_USER" ] && CONN_COMMAND=$CONN_COMMAND'$CONN_URL_USER@'
+				CONN_COMMAND=$CONN_COMMAND'$CONN_URL_HOST:$CONN_URL_PATH" "$CONN_MOUNTPOINT" & wait $!'
+				;;
+			ssh)
+				CONN_COMMAND=$CONN_COMMAND$_SSH_COMMAND
+				[ "$CONN_OPT_SSH_X_FORWARD" = 1 ] && CONN_COMMAND=$CONN_COMMAND' -X'
+				[ -n "$CONN_URL_PORT" ] && CONN_COMMAND=$CONN_COMMAND' -p "$CONN_URL_PORT"'
+				CONN_COMMAND=$CONN_COMMAND' "'
+				[ -n "$CONN_URL_USER" ] && CONN_COMMAND=$CONN_COMMAND'$CONN_URL_USER@'
+				CONN_COMMAND=$CONN_COMMAND'$CONN_URL_HOST"'
+				[ -n "$CONN_OPT_SSH_ARGS" ] && CONN_COMMAND=$CONN_COMMAND' '$CONN_OPT_SSH_ARGS
+				CONN_COMMAND=$CONN_COMMAND' "$@"'
+				[ $# -eq 2 ] && CONN_COMMAND=$CONN_COMMAND' || [ $? -ne 255 ]'
+				;;
+			esac
+			return 0
+			;;
+		unmount)
+			checkutil fusermount || return 1
+			if [ "$3" = f ]; then
+				fusermount -uz -- "$4"
+			else
+				fusermount -u -- "$4"
+			fi
+			;;
+		ui_configure)
+			unset _MAIN_CURSOR_POS
+			_KEY_TYPES=$(ssh -Q key 2>/dev/null | grep -vF @)
+			[ -z "$_KEY_TYPES" ] && _KEY_TYPES=$(printf %s\\n rsa ed25519 ecdsa dsa rsa1)
+			_KEY_TYPE=$(printf %s "$_KEY_TYPES" | awk 'NR == 1 || $0 == "ssh-ed25519" { value = $0 } END { print value }')
+			_KEY_BITS=4096
+			_USE_NEW_KEY_FORMAT=1
+			_KEY_KDF_ROUNDS=100
+			_KEY_OUTPUT_DIR=$HOME
+			_KEY_OUTPUT_FILENAME=ssh-key
+			while :; do
+				ui_callback() {
+					filter_conf_vars
+				}
+				case $LANG_CODE_MSG in
+				ru)
+					ui "$UI_TITLE_PRE$UI_TITLE_MAIN" '' '
+						iCONN_URL_HOST:Адрес сервера:
+						iCONN_URL_PORT:Порт:
+						iCONN_URL_USER:Имя пользователя:
+						pCONN_OPT_PASSWORD:Пароль:
+						iCONN_URL_PATH:Путь на сервере:
+						t
+						tПротокол для подключения по умолчанию:
+						rCONN_URL_PROTO:SFTP
+						vsftp
+						rCONN_URL_PROTO:SSH
+						vssh
+						t
+						bСгенерировать ключ аутентификации
+						vkey_generate
+						bУказать ключ аутентификации
+						vkey_set
+						'"$([ $CONN_HAS_KEY -eq 1 ] && printf %s\\n 'bНе использовать ключ аутентификации' vkey_unset)"'
+						t
+						cCONN_OPT_USE_COMPRESSION:Использовать сжатие
+						cCONN_OPT_SSH_X_FORWARD:Включить перенаправление X11
+						cCONN_OPT_DISABLE_KNOWN_HOSTS:Не использовать файл known_hosts (небезопасно, использовать для доступа к разным системам по одному адресу)
+						iCONN_OPT_SSHFS_ARGS:Дополнительные аргументы для sshfs:
+						iCONN_OPT_SSH_ARGS:Дополнительные аргументы для ssh:
+						t
+						cCONN_OPT_AUTOMOUNT:Отметить для автоматического монтирования
+						t
+						bOK
+						vok' "$_MAIN_CURSOR_POS"
+					;;
+				*)
+					ui "$UI_TITLE_PRE$UI_TITLE_MAIN" '' '
+						iCONN_URL_HOST:Server address:
+						iCONN_URL_PORT:Port:
+						iCONN_URL_USER:User name:
+						pCONN_OPT_PASSWORD:Password:
+						iCONN_URL_PATH:Path on the server:
+						t
+						tDefault connection protocol:
+						rCONN_URL_PROTO:SFTP
+						vsftp
+						rCONN_URL_PROTO:SSH
+						vssh
+						t
+						bGenerate authentication key
+						vkey_generate
+						bSpecify authentication key
+						vkey_set
+						'"$([ $CONN_HAS_KEY -eq 1 ] && printf %s\\n 'bDo not use authentication key' vkey_unset)"'
+						t
+						cCONN_OPT_USE_COMPRESSION:Use compression
+						cCONN_OPT_SSH_X_FORWARD:Enable X11 forwarding
+						cCONN_OPT_DISABLE_KNOWN_HOSTS:Do not use known_hosts file (insecure, use in case of access to different systems at the same address)
+						iCONN_OPT_SSHFS_ARGS:Additional arguments for sshfs:
+						iCONN_OPT_SSH_ARGS:Additional arguments for ssh:
+						t
+						cCONN_OPT_AUTOMOUNT:Mount automatically
+						t
+						bOK
+						vok' "$_MAIN_CURSOR_POS"
+					;;
+				esac || break
+				_MAIN_CURSOR_POS=$UI_MENU_CURSOR_POS
+				case $UI_CHOICE in
+				key_generate)
+					unset _KEY_GENERATE_CURSOR_POS
+					while :; do
+						ui_callback() {
+							[ $UI_INIT -eq 1 ] || { [ -n "$UI_VAR_NAME" ] && { [ -z "$UI_EVENT" ] || [ "$UI_EVENT" = edit_complete ]; }; } || return 0
+							[ "$UI_EVENT" = edit_complete ] && case $UI_VAR_NAME in
+							_KEY_BITS)
+								UI_VALUE_L=$(awk -- 'BEGIN { ARGV[1] = int(ARGV[1] + 0); if(ARGV[1] < 1) ARGV[1] = 4096; print ARGV[1] }' "$UI_VALUE_L$UI_VALUE_R")
+								unset UI_VALUE_R
+								;;
+							_KEY_KDF_ROUNDS)
+								UI_VALUE_L=$(awk -- 'BEGIN { ARGV[1] = int(ARGV[1] + 0); if(ARGV[1] < 1) ARGV[1] = 100; print ARGV[1] }' "$UI_VALUE_L$UI_VALUE_R")
+								unset UI_VALUE_R
+								;;
+							_KEY_OUTPUT_FILENAME)
+								UI_VALUE_L=$(LC_ALL=C awk -- 'BEGIN {
+									sub(/\/.*/, "", ARGV[1])
+									if(ARGV[1] == "" || ARGV[1] == "." || ARGV[1] == "..")
+										print "ssh-key"
+									else print ARGV[1]
+								}' "$UI_VALUE_L$UI_VALUE_R")
+								unset UI_VALUE_R
+								;;
+							_KEY_OUTPUT_DIR)
+								normalize_path "/$UI_VALUE_L$UI_VALUE_R" UI_VALUE_L
+								unset UI_VALUE_R
+								;;
+							esac
+							UI_MENU=$(
+								l10n_msg ru 'tТип ключа:' 'tKey type:'
+								printf %s "$_KEY_TYPES" | awk '{ print "r_KEY_TYPE:" $0 }'
+								case $LANG_CODE_MSG in
+								ru)
+									printf %s\\n t \
+										'i_KEY_BITS:Число бит в ключе:' \
+										t \
+										'c_USE_NEW_KEY_FORMAT:Использовать новый формат ключа вместо PEM (безопаснее)'
+									[ $_USE_NEW_KEY_FORMAT -eq 1 ] && printf %s\\n 'i_KEY_KDF_ROUNDS:Количество итераций функции формирования ключа:'
+									printf %s\\n t \
+										'i_KEY_OUTPUT_DIR:Каталог для создаваемого файла ключа:' \
+										'bВыбрать каталог' vchange_path \
+										'i_KEY_OUTPUT_FILENAME:Имя создаваемого файла ключа:' s \
+										t 'bСоздать' vcreate
+									;;
+								*)
+									printf %s\\n t \
+										'i_KEY_BITS:Number of bits in the key:' \
+										t \
+										'c_USE_NEW_KEY_FORMAT:Use the new key format instead of PEM (safer)'
+									[ $_USE_NEW_KEY_FORMAT -eq 1 ] && printf %s\\n 'i_KEY_KDF_ROUNDS:Number of iterations of the key derivation function:'
+									printf %s\\n t \
+										'i_KEY_OUTPUT_DIR:Directory for the key file to be created:' \
+										'bSelect directory' vchange_path \
+										'i_KEY_OUTPUT_FILENAME:Name of the key file:' s \
+										t 'bCreate' vcreate
+									;;
+								esac
+							)
+						}
+						ui "$UI_TITLE_PRE$UI_TITLE_MAIN - $(l10n_msg ru 'Генерация ключей аутентификации' 'Generating authentication keys')" '' '' "$_KEY_GENERATE_CURSOR_POS" || break
+						_KEY_GENERATE_CURSOR_POS=$UI_MENU_CURSOR_POS
+						case $UI_CHOICE in
+						change_path)
+							ui_select_file_callback() {
+								[ -d "$UI_CHOICE" ]
+							}
+							ui_select_file "$UI_TITLE_PRE$UI_TITLE_MAIN - $(l10n_msg ru 'Каталог для создаваемого файла ключа' 'Directory for the key file to be created')" "$(l10n_msg ru 'Нажмите "пробел" для выбора каталога, "q" или "Esc Esc" для выхода' 'Press "space" to select directory, "q" or "Esc Esc" to exit')" "$_KEY_OUTPUT_DIR" || continue
+							_KEY_OUTPUT_DIR=$UI_CHOICE
+							;;
+						create)
+							ui_mode off
+							checkutil ssh-keygen || {
+								wait_user; continue
+							}
+							normalize_path "$_KEY_OUTPUT_DIR/$_KEY_OUTPUT_FILENAME" _KEY_OUTPUT_PATH
+							_COMMAND='ssh-keygen -t "$_KEY_TYPE" -b "$_KEY_BITS"'
+							[ $_USE_NEW_KEY_FORMAT -eq 1 ] && _COMMAND=$_COMMAND' -o -a "$_KEY_KDF_ROUNDS"'
+							_COMMAND=$_COMMAND' -C '\'\'' -f "$_KEY_OUTPUT_PATH"'
+							eval "$_COMMAND"
+							wait_user
+							;;
+						esac
+					done
+					;;
+				key_set) app_ui_key_set || continue;;
+				key_unset) app_ui_key_unset || continue;;
+				ok) break;;
+				esac
+			done
+			;;
+		get_conf_vars_filter)
+			CONF_VARS_FILTER='
+				var = "CONN_URL_PORT"; if(v[var] == 22) v[var] = ""
+				var = "CONN_OPT_USE_COMPRESSION"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_SSH_X_FORWARD"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_DISABLE_KNOWN_HOSTS"; v[var] = v[var] + 0 > 0 ? 1 : ""'
+			;;
+		esac
+		;;
+	ftp)
+		case $1 in
+		protocols_list)
+			{ [ $# -lt 3 ] || [ "$3" = mountable ]; } && printf %s\\n ftp
+			;;
+		options_list)
+			printf %s\\n password curlftpfs_args automount
+			;;
+		pre_connect)
+			checkutil fusermount setsid curlftpfs || return 1
+			unset CONN_COMMAND
+			[ -n "$PASSWORD" ] && CONN_OPT_PASSWORD=$PASSWORD
+			if [ -n "$CONN_OPT_PASSWORD" ]; then
+				checkutil expect || return 1
+				CONN_COMMAND='sendpass sn "$CONN_OPT_PASSWORD" '
+			else
+				CONN_COMMAND='setsid '
+			fi
+			CONN_COMMAND=$CONN_COMMAND'curlftpfs'
+			[ -n "$CONN_URL_USER" ] && CONN_COMMAND=$CONN_COMMAND' -ouser="$CONN_URL_USER"'
+			[ -n "$CONN_OPT_CURLFTPFS_ARGS" ] && CONN_COMMAND=$CONN_COMMAND' '$CONN_OPT_CURLFTPFS_ARGS
+			CONN_COMMAND=$CONN_COMMAND' "$@" -- "$CONN_URL_HOST:'
+			[ -n "$CONN_URL_PORT" ] && CONN_COMMAND=$CONN_COMMAND'$CONN_URL_PORT'
+			CONN_COMMAND=$CONN_COMMAND'$CONN_URL_PATH" "$CONN_MOUNTPOINT"'
+			;;
+		unmount)
+			checkutil fusermount || return 1
+			if [ "$3" = f ]; then
+				fusermount -uz -- "$4"
+			else
+				fusermount -u -- "$4"
+			fi
+			;;
+		ui_configure)
+			ui_callback() {
+				filter_conf_vars
+			}
+			case $LANG_CODE_MSG in
+			ru)
+				ui "$UI_TITLE_PRE$UI_TITLE_MAIN" '' '
+					iCONN_URL_HOST:Адрес сервера:
+					iCONN_URL_PORT:Порт:
+					iCONN_URL_USER:Имя пользователя:
+					pCONN_OPT_PASSWORD:Пароль:
+					iCONN_URL_PATH:Путь на сервере:
+					t
+					iCONN_OPT_CURLFTPFS_ARGS:Дополнительные аргументы для curlftpfs:
+					t
+					cCONN_OPT_AUTOMOUNT:Отметить для автоматического монтирования
+					t
+					bOK
+					vok'
+				;;
+			*)
+				ui "$UI_TITLE_PRE$UI_TITLE_MAIN" '' '
+					iCONN_URL_HOST:Server address:
+					iCONN_URL_PORT:Port:
+					iCONN_URL_USER:User name:
+					pCONN_OPT_PASSWORD:Password:
+					iCONN_URL_PATH:Path on the server:
+					t
+					iCONN_OPT_CURLFTPFS_ARGS:Additional arguments for curlftpfs:
+					t
+					cCONN_OPT_AUTOMOUNT:Mount automatically
+					t
+					bOK
+					vok'
+				;;
+			esac
+			;;
+		get_conf_vars_filter)
+			CONF_VARS_FILTER='var = "CONN_URL_PORT"; if(v[var] == 21) v[var] = ""'
+			;;
+		esac
+		;;
+	smb)
+		case $1 in
+		protocols_list)
+			{ [ $# -lt 3 ] || [ "$3" = mountable ]; } && printf %s\\n smb
+			;;
+		options_list)
+			printf %s\\n local_charset samba_charset smb_tree_scan_period disable_smb_query_browsers free_space_size hide_shares hide_hosts smbnetfs_args automount
+			;;
+		pre_connect)
+			checkutil fusermount setsid smbnetfs || return 1
+			[ -e "$HOME/.smb" ] || mkdir -p -- "$HOME/.smb" || return 1
+			[ -z "$CONN_OPT_FREE_SPACE_SIZE" ] && CONN_OPT_FREE_SPACE_SIZE=2147483647
+			CONN_COMMAND='setsid smbnetfs -o free_space_size="$CONN_OPT_FREE_SPACE_SIZE"'$(
+				printf %s\\n local_charset samba_charset smb_tree_scan_period |
+				while read -r OPT_NAME; do
+					VAR_NAME=$(awk -- 'BEGIN { print "CONN_OPT_" toupper(ARGV[1]) }' "$OPT_NAME")
+					eval "[ -n \"\$$VAR_NAME\" ]" && printf %s ",$OPT_NAME=\"\$$VAR_NAME\""
+				done
+				if [ "$CONN_OPT_DISABLE_SMB_QUERY_BROWSERS" = 1 ]; then
+					printf %s ',smb_query_browsers=false'
+				else
+					printf %s ',smb_query_browsers=true'
+				fi
+				if [ "$CONN_OPT_HIDE_SHARES" = 1 ]; then
+					printf %s ',show_\$_shares=false'
+				else
+					printf %s ',show_\$_shares=true'
+				fi
+				if [ "$CONN_OPT_HIDE_HOSTS" = 1 ]; then
+					printf %s ',show_hidden_hosts=false'
+				else
+					printf %s ',show_hidden_hosts=true'
+				fi
+			)
+			[ -n "$CONN_OPT_SMBNETFS_ARGS" ] && CONN_COMMAND=$CONN_COMMAND' '$CONN_OPT_SMBNETFS_ARGS
+			CONN_COMMAND=$CONN_COMMAND' "$@" "$CONN_MOUNTPOINT"'
+			;;
+		unmount)
+			checkutil fusermount || return 1
+			if [ "$3" = f ]; then
+				fusermount -uz -- "$4"
+			else
+				fusermount -u -- "$4"
+			fi
+			;;
+		ui_configure)
+			unset \
+				_RES_DOMAIN \
+				_RES_PORT \
+				_RES_USER \
+				_RES_PASSWORD \
+				_RES_PATH \
+				_SYMLINK_NAME \
+				_MAIN_CURSOR_POS
+			_RES_HOST=localhost
+			_SYMLINK_DIR=$HOME
+			_SYMLINK_NAME_SET_MANUAL=0
+			_callback_set_symlink_name() {
+				[ $_SYMLINK_NAME_SET_MANUAL -eq 0 ] || return 0
+				_SYMLINK_NAME=$(awk -- 'BEGIN {
+					if(ARGV[2] != "") ARGV[1] = ARGV[1] ":" ARGV[2]
+					if(ARGV[3] != "") {
+						sub(/.*\//, "", ARGV[3])
+						ARGV[1] = ARGV[3] " - " ARGV[1]
+					}
+					print ARGV[1]
+				}' "$_RES_HOST" "$_RES_PORT" "$_RES_PATH")
+			}
+			while :; do
+				ui_callback() {
+					if [ "$UI_CHOICE" = create ]; then
+						unset UI_EVENT
+						if [ -n "$_RES_PASSWORD" ] && [ -z "$_RES_USER" ]; then
+							UI_DESCRIPTION="$(l10n_msg ru 'Не указано имя пользователя' 'User name is not specified')"
+						elif [ -z "$_SYMLINK_NAME" ]; then
+							UI_DESCRIPTION="$(l10n_msg ru 'Не указано имя символической ссылки' 'Symbolic link name is not specified')"
+						elif is_exists "$_SYMLINK_DIR/$_SYMLINK_NAME"; then
+							UI_DESCRIPTION="$(l10n_msg ru 'Файл или каталог' 'File or directory') \"$_SYMLINK_DIR/$_SYMLINK_NAME\" $(l10n_msg ru 'уже существует' 'is already exists')"
+						else
+							UI_DESCRIPTION=$(
+								{ [ -d "$_SYMLINK_DIR" ] || mkdir -p "$_SYMLINK_DIR"; } &&
+								ln -s "$MOUNTS_PATH/$SELECTED_CONN_NAME/$(awk -- '
+								function enc(_in) {
+									_out = ""
+									_l = length(_in)
+									for(_i = 1; _i <= _l; _i++) {
+										_c = substr(_in, _i, 1)
+										if(_c == "%") _out = _out "%25"
+										else if(_c == "/") _out = _out "%2F"
+										else if(_c == ":") _out = _out "%3A"
+										else if(_c == "@") _out = _out "%40"
+										else _out = _out _c
+									}
+									return _out
+								}
+								BEGIN {
+									ORS = ""
+									if(ARGV[2] != "") {
+										if(ARGV[1] != "") print enc(ARGV[1]) ":"
+										print enc(ARGV[2])
+										if(ARGV[3] != "") print ":" enc(ARGV[3])
+										print "@"
+									}
+									print ARGV[4]
+									if(ARGV[5] != "") print ":" ARGV[5]
+									print ARGV[6]
+								}' "$_RES_DOMAIN" "$_RES_USER" "$_RES_PASSWORD" "$_RES_HOST" "$_RES_PORT" "$_RES_PATH")" "$_SYMLINK_DIR/$_SYMLINK_NAME" 2>&1
+							) &&
+								UI_DESCRIPTION="$(l10n_msg ru 'Создана символическая ссылка' 'Created symbolic link') \"$_SYMLINK_DIR/$_SYMLINK_NAME\""
+						fi
+					elif [ "$UI_EVENT" = edit_complete ]; then
+						case $UI_VAR_NAME in
+						_RES_HOST)
+							UI_VALUE_L=$(LC_ALL=C awk -- 'BEGIN {
+								if(match(ARGV[1], /[A-Fa-f0-9:]*:[A-Fa-f0-9:]*/))
+									print "[" substr(ARGV[1], RSTART, RLENGTH) "]"
+								else if(match(ARGV[1], /(([A-Za-z0-9][A-Za-z0-9_-]*)?[A-Za-z0-9](\.([A-Za-z0-9][A-Za-z0-9_-]*)?[A-Za-z0-9])*|\[[A-Fa-f0-9:]+\])/))
+									print substr(ARGV[1], RSTART, RLENGTH)
+								else print "localhost"
+							}' "$UI_VALUE_L$UI_VALUE_R")
+							_RES_HOST=$UI_VALUE_L; unset UI_VALUE_R
+							_callback_set_symlink_name; return 0
+							;;
+						_RES_PORT)
+							UI_VALUE_L=$(LC_ALL=C awk -- 'BEGIN {
+								if(match(ARGV[1], /[1-9][0-9]*/))
+									ARGV[1] = substr(ARGV[1], RSTART, RLENGTH)
+								else exit
+								if(ARGV[1] == "445") exit
+								print ARGV[1]
+							}' "$UI_VALUE_L$UI_VALUE_R")
+							_RES_PORT=$UI_VALUE_L; unset UI_VALUE_R
+							_callback_set_symlink_name; return 0
+							;;
+						_RES_PATH)
+							[ -n "$UI_VALUE_L$UI_VALUE_R" ] && {
+								normalize_path "/$UI_VALUE_L$UI_VALUE_R" UI_VALUE_L
+								[ "$UI_VALUE_L" = / ] && unset UI_VALUE_L
+							}
+							_RES_PATH=$UI_VALUE_L; unset UI_VALUE_R
+							_callback_set_symlink_name; return 0
+							;;
+						_SYMLINK_DIR)
+							normalize_path "/$UI_VALUE_L$UI_VALUE_R" UI_VALUE_L
+							unset UI_VALUE_R; return 0
+							;;
+						_SYMLINK_NAME)
+							UI_VALUE_L=$(LC_ALL=C awk -- 'BEGIN {
+								sub(/\/.*/, "", ARGV[1])
+								if(ARGV[1] != "." && ARGV[1] != "..") print ARGV[1]
+							}' "$UI_VALUE_L$UI_VALUE_R")
+							if [ -n "$UI_VALUE_L" ]; then
+								_SYMLINK_NAME_SET_MANUAL=1
+							else
+								_SYMLINK_NAME_SET_MANUAL=0
+							fi
+							unset UI_VALUE_R; return 0
+							;;
+						esac
+					fi
+					filter_conf_vars
+				}
+				case $LANG_CODE_MSG in
+				ru)
+					ui "$UI_TITLE_PRE$UI_TITLE_MAIN" '' '
+						'"$([ -n "$SELECTED_CONN_NAME" ] && printf %s\\n \
+							'hСоздать символическую ссылку на SMB-ресурс' \
+							'i_RES_DOMAIN:Домен/рабочая группа:' s \
+							'i_RES_HOST:Адрес сервера:' \
+							'i_RES_PORT:Порт:' \
+							'i_RES_USER:Имя пользователя:' \
+							'p_RES_PASSWORD:Пароль:' \
+							'i_RES_PATH:Путь на сервере:' \
+							t 'i_SYMLINK_DIR:Каталог для создаваемой символической ссылки:' \
+							'bВыбрать каталог' vchange_path \
+							'i_SYMLINK_NAME:Имя создаваемой символической ссылки:' \
+							t 'bСоздать' vcreate \
+							t h 'hОпции'
+						)"'
+						iCONN_OPT_LOCAL_CHARSET:Кодировка клиента (по умолчанию: autodetected):
+						iCONN_OPT_SAMBA_CHARSET:Кодировка сервера (по умолчанию: utf-8):
+						iCONN_OPT_SMB_TREE_SCAN_PERIOD:Интервал между сканированиями SMB-сети (по умолчанию: 300, сек.):
+						cCONN_OPT_DISABLE_SMB_QUERY_BROWSERS:Отключить автоматическое сканирование сети SMB
+						iCONN_OPT_FREE_SPACE_SIZE:Кол-во свободного места, сообщаемое файловой системой (кол-во блоков по 4 КБ):
+						cCONN_OPT_HIDE_SHARES:Скрывать ресурсы, оканчивающиеся символом "$"
+						cCONN_OPT_HIDE_HOSTS:Скрывать скрытые хосты
+						t
+						iCONN_OPT_SMBNETFS_ARGS:Дополнительные аргументы для smbnetfs:
+						t
+						cCONN_OPT_AUTOMOUNT:Отметить для автоматического монтирования
+						t
+						bOK
+						vok' "$_MAIN_CURSOR_POS"
+					;;
+				*)
+					ui "$UI_TITLE_PRE$UI_TITLE_MAIN" '' '
+						'"$([ -n "$SELECTED_CONN_NAME" ] && printf %s\\n \
+							'hCreate a symbolic link to an SMB resource' \
+							'i_RES_DOMAIN:Domain/workgroup:' s \
+							'i_RES_HOST:Server address:' \
+							'i_RES_PORT:Port:' \
+							'i_RES_USER:User name:' \
+							'p_RES_PASSWORD:Password:' \
+							'i_RES_PATH:Path on the server:' \
+							t 'i_SYMLINK_DIR:Directory for the symbolic link to be created:' \
+							'bSelected directory' vchange_path \
+							'i_SYMLINK_NAME:Name of the symbolic link to be created:' \
+							t 'bCreate' vcreate \
+							t h 'hOptions'
+						)"'
+						iCONN_OPT_LOCAL_CHARSET:Client encoding (default: autodetected):
+						iCONN_OPT_SAMBA_CHARSET:Server encoding (default: utf-8):
+						iCONN_OPT_SMB_TREE_SCAN_PERIOD:Interval between scans SMB networks (default: 300, sec.):
+						cCONN_OPT_DISABLE_SMB_QUERY_BROWSERS:Disable automatic scanning of SMB network
+						iCONN_OPT_FREE_SPACE_SIZE:Number of free space reported by the file system (number of 4 KB blocks):
+						cCONN_OPT_HIDE_SHARES:Hide resources ending with "$"
+						cCONN_OPT_HIDE_HOSTS:Hide hidden hosts
+						t
+						iCONN_OPT_SMBNETFS_ARGS:Additional arguments for smbnetfs:
+						t
+						cCONN_OPT_AUTOMOUNT:Mount automatically
+						t
+						bOK
+						vok' "$_MAIN_CURSOR_POS"
+					;;
+				esac || break
+				_MAIN_CURSOR_POS=$UI_MENU_CURSOR_POS
+				case $UI_CHOICE in
+				change_path)
+					ui_select_file_callback() {
+						[ -d "$UI_CHOICE" ]
+					}
+					ui_select_file "$UI_TITLE_PRE$UI_TITLE_MAIN - $(l10n_msg ru 'Каталог для создаваемой символической ссылки' 'Directory for the symbolic link to be created')" "$(l10n_msg ru 'Нажмите "пробел" для выбора каталога, "q" или "Esc Esc" для выхода' 'Press "space" to select directory, "q" or "Esc Esc" to exit')" "$_SYMLINK_DIR" || continue
+					_SYMLINK_DIR=$UI_CHOICE
+					;;
+				ok) break;;
+				esac
+			done
+			;;
+		get_conf_vars_filter)
+			CONF_VARS_FILTER='
+				v["CONN_URL_HOST"] = "localhost"
+				v["CONN_URL_USER"] = v["CONN_URL_PORT"] = v["CONN_URL_PATH"] = ""
+				var = "CONN_OPT_SMB_TREE_SCAN_PERIOD"
+				v[var] = int(v[var] + 0); if(v[var] < 1) v[var] = ""
+				var = "CONN_OPT_FREE_SPACE_SIZE"
+				v[var] = int(v[var] + 0)
+				if(v[var] < 0) v[var] = ""
+				if(v[var] >= 2147483647) v[var] = 2147483647
+				var = "CONN_OPT_DISABLE_SMB_QUERY_BROWSERS"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_HIDE_SHARES"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_HIDE_HOSTS"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				filter_opts["LOCAL_CHARSET"] = filter_opts["SAMBA_CHARSET"] = ""
+				for(opt in filter_opts) sub(/,.*/, "", v["CONN_OPT_" opt])'
+			;;
+		esac
+		;;
+	rdp)
+		case $1 in
+		protocols_list)
+			{ [ $# -lt 3 ] || [ "$3" = nonmountable ]; } && printf %s\\n rdp
+			;;
+		options_list)
+			printf %s\\n password fullscreen disable_decorations disable_clipboard_sync kb_layout desktop_scale desktop_size audio_playback_mode audio_playback_method audio_playback_latency audio_capture_mode audio_capture_method disks disable_compression disable_smooth_fonts disable_compositing disable_window_drag disable_menu_anims disable_themes disable_wallpaper xfreerdp_args
+			;;
+		pre_connect)
+			checkutil xfreerdp || return 1
+			unset CONN_COMMAND
+			[ -n "$PASSWORD" ] && CONN_OPT_PASSWORD=$PASSWORD
+			[ -n "$CONN_OPT_PASSWORD" ] && {
+				checkutil expect || return 1
+				CONN_COMMAND='sendpass n "$CONN_OPT_PASSWORD" '
+			}
+			CONN_COMMAND=$CONN_COMMAND'xfreerdp /cert-ignore'
+			if [ -n "$CONN_NAME" ]; then
+				CONN_COMMAND=$CONN_COMMAND' /title:"$CONN_NAME"'
+			else
+				CONN_COMMAND=$CONN_COMMAND' /title:"$CONN_URL_USER@$CONN_URL_HOST'
+				[ -n "$CONN_URL_PORT" ] && CONN_COMMAND=$CONN_COMMAND':$CONN_URL_PORT'
+				CONN_COMMAND=$CONN_COMMAND'"'
+			fi
+			[ "$CONN_OPT_FULLSCREEN" = 1 ] && CONN_COMMAND=$CONN_COMMAND' /f'
+			[ "$CONN_OPT_DISABLE_DECORATIONS" = 1 ] && CONN_COMMAND=$CONN_COMMAND' -decorations'
+			if [ "$CONN_OPT_DISABLE_CLIPBOARD_SYNC" = 1 ]; then
+				CONN_COMMAND=$CONN_COMMAND' -clipboard'
+			else
+				CONN_COMMAND=$CONN_COMMAND' +clipboard'
+			fi
+			[ -n "$CONN_OPT_KB_LAYOUT" ] && CONN_COMMAND=$CONN_COMMAND' /kbd:"$CONN_OPT_KB_LAYOUT"'
+			case $CONN_OPT_DESKTOP_SCALE in
+			dynamic) CONN_COMMAND=$CONN_COMMAND' /dynamic-resolution';;
+			stretch) CONN_COMMAND=$CONN_COMMAND' /smart-sizing';;
+			esac
+			[ -n "$CONN_OPT_DESKTOP_SIZE" ] && CONN_COMMAND=$CONN_COMMAND' /size:"$CONN_OPT_DESKTOP_SIZE"'
+			case $CONN_OPT_DESKTOP_SIZE in
+			'') ;;
+			multimon) CONN_COMMAND=$CONN_COMMAND' /multimon';;
+			workarea) CONN_COMMAND=$CONN_COMMAND' /workarea';;
+			*) CONN_COMMAND=$CONN_COMMAND' /size:"$CONN_OPT_DESKTOP_SIZE"';;
+			esac
+			case $CONN_OPT_AUDIO_PLAYBACK_MODE in
+			'') CONN_COMMAND=$CONN_COMMAND' /audio-mode:2';;
+			remote) CONN_COMMAND=$CONN_COMMAND' /audio-mode:1';;
+			local)
+				CONN_COMMAND=$CONN_COMMAND' /audio-mode:0 /sound:sys:'
+				case $CONN_OPT_AUDIO_PLAYBACK_METHOD in
+				'') CONN_COMMAND=$CONN_COMMAND'pulse';;
+				alsa) CONN_COMMAND=$CONN_COMMAND'alsa';;
+				esac
+				CONN_COMMAND=$CONN_COMMAND',latency:"$CONN_OPT_AUDIO_PLAYBACK_LATENCY"'
+				;;
+			esac
+			case $CONN_OPT_AUDIO_CAPTURE_METHOD in
+			'') ;;
+			pulse) CONN_COMMAND=$CONN_COMMAND' /microphone:sys:pulse';;
+			alsa) CONN_COMMAND=$CONN_COMMAND' /microphone:sys:alsa';;
+			esac
+			[ -n "$CONN_OPT_DISKS" ] && {
+				CONN_COMMAND=$CONN_COMMAND$(LC_ALL=C awk -- 'BEGIN {
+					ORS = ""
+					gsub(/\47/, "\47\134\47\47", ARGV[1])
+					disks_count = split(ARGV[1], disks, /\/\/+/)
+					for(i = 1; i <= disks_count; i++) {
+						disk_name = disk_path = disks[i]
+						sub(/\/.*/, "", disk_name)
+						sub(/^[^\57]+/, "", disk_path)
+						if(disk_path == "/.") disk_path = "/"
+						print " /drive:\47" disk_name "," disk_path "\47"
+					}
+				}' "$CONN_OPT_DISKS")
+			}
+			if [ "$CONN_OPT_DISABLE_COMPRESSION" = 1 ]; then
+				CONN_COMMAND=$CONN_COMMAND' -compression'
+			else
+				CONN_COMMAND=$CONN_COMMAND' +compression'
+			fi
+			if [ "$CONN_OPT_DISABLE_SMOOTH_FONTS" = 1 ]; then
+				CONN_COMMAND=$CONN_COMMAND' -fonts'
+			else
+				CONN_COMMAND=$CONN_COMMAND' +fonts'
+			fi
+			if [ "$CONN_OPT_DISABLE_COMPOSITING" = 1 ]; then
+				CONN_COMMAND=$CONN_COMMAND' -aero'
+			else
+				CONN_COMMAND=$CONN_COMMAND' +aero'
+			fi
+			if [ "$CONN_OPT_DISABLE_WINDOW_DRAG" = 1 ]; then
+				CONN_COMMAND=$CONN_COMMAND' -window-drag'
+			else
+				CONN_COMMAND=$CONN_COMMAND' +window-drag'
+			fi
+			if [ "$CONN_OPT_DISABLE_MENU_ANIMS" = 1 ]; then
+				CONN_COMMAND=$CONN_COMMAND' -menu-anims'
+			else
+				CONN_COMMAND=$CONN_COMMAND' +menu-anims'
+			fi
+			if [ "$CONN_OPT_DISABLE_THEMES" = 1 ]; then
+				CONN_COMMAND=$CONN_COMMAND' -themes'
+			else
+				CONN_COMMAND=$CONN_COMMAND' +themes'
+			fi
+			if [ "$CONN_OPT_DISABLE_WALLPAPER" = 1 ]; then
+				CONN_COMMAND=$CONN_COMMAND' -wallpaper'
+			else
+				CONN_COMMAND=$CONN_COMMAND' +wallpaper'
+			fi
+			[ -n "$CONN_OPT_XFREERDP_ARGS" ] && CONN_COMMAND=$CONN_COMMAND' '$CONN_OPT_XFREERDP_ARGS
+			CONN_COMMAND=$CONN_COMMAND' "$@"'
+			[ -n "$CONN_URL_USER" ] && CONN_COMMAND=$CONN_COMMAND' /u:"$CONN_URL_USER"'
+			CONN_COMMAND=$CONN_COMMAND' /v:"$CONN_URL_HOST"'
+			[ -n "$CONN_URL_PORT" ] && CONN_COMMAND=$CONN_COMMAND' /port:"$CONN_URL_PORT"'
+			return 0
+			;;
+		ui_configure)
+			unset _DISK_NAME _MAIN_CURSOR_POS
+			_DISK_PATH=$HOME
+			case $CONN_OPT_DESKTOP_SIZE in
+			'') _DESKTOP_SIZING=server;;
+			multimon) _DESKTOP_SIZING=multimon;;
+			workarea) _DESKTOP_SIZING=workarea;;
+			*) _DESKTOP_SIZING=custom;;
+			esac
+			while :; do
+				ui_callback() {
+					[ $UI_INIT -eq 1 ] || { [ -n "$UI_VAR_NAME" ] && { [ -z "$UI_EVENT" ] || [ "$UI_EVENT" = edit_complete ]; }; } || return 0
+					filter_conf_vars
+					case $UI_VAR_NAME in
+					_DESKTOP_SIZING)
+						case $_DESKTOP_SIZING in
+						server) unset CONN_OPT_DESKTOP_SIZE;;
+						multimon) CONN_OPT_DESKTOP_SIZE=multimon;;
+						workarea) CONN_OPT_DESKTOP_SIZE=workarea;;
+						custom)
+							{
+								[ -z "$CONN_OPT_DESKTOP_SIZE" ] ||
+								[ "$CONN_OPT_DESKTOP_SIZE" = multimon ] ||
+								[ "$CONN_OPT_DESKTOP_SIZE" = workarea ]
+							} &&
+								CONN_OPT_DESKTOP_SIZE=$(get_window_geometry 'print w "x" h' root 2>/dev/null)
+							;;
+						esac
+						;;
+					_DISK_NAME)
+						UI_VALUE_L=$(printf %s "$UI_VALUE_L$UI_VALUE_R" | sed 's/[/,]//g')
+						unset UI_VALUE_R
+						;;
+					_DISK_PATH)
+						normalize_path "/$UI_VALUE_L$UI_VALUE_R" UI_VALUE_L
+						unset UI_VALUE_R
+						;;
+					esac
+					_UI_MENU_KB_LAYOUT=$(
+						{ [ -z "$CONN_OPT_KB_LAYOUT" ] || ! xfreerdp /kbd-list |
+						LC_ALL=C awk -- 'BEGIN { ARGC = 1; exit_code = 1 }
+						$1 == ARGV[1] {
+							if(!sub(/^[\1-\40]*[^\1-\40]+[\1-\40]+/, "")) next
+							exit_code = 0
+							print $0; exit
+						} END { exit exit_code }' "$CONN_OPT_KB_LAYOUT"; } &&
+						l10n_msg ru 'системная' 'system'
+					)
+					_UI_MENU_DISKS=$(LC_ALL=C awk -- 'BEGIN {
+						disks_count = split(ARGV[1], disks, /\/\/+/)
+						for(i = 1; i <= disks_count; i++) {
+							disk_name = disk_path = disks[i]
+							sub(/\/.*/, "", disk_name)
+							sub(/^[^\57]+/, "", disk_path)
+							if(disk_path == "/.") disk_path = "/"
+							else gsub(/\n/, "\357\277\275", disk_path)
+							print "b'"$(l10n_msg ru 'Удалить' 'Remove')"' \"" disk_name "\" -> \"" disk_path "\""
+							print "vdelete_disk:" disk_name
+						}
+					}' "$CONN_OPT_DISKS")
+					case $LANG_CODE_MSG in
+					ru)
+						UI_MENU='
+							iCONN_URL_HOST:Адрес сервера:
+							iCONN_URL_PORT:Порт:
+							iCONN_URL_USER:Имя пользователя[@домен]:
+							pCONN_OPT_PASSWORD:Пароль:
+							t
+							hОсновные
+							cCONN_OPT_FULLSCREEN:Запускать в полноэкранном режиме
+							cCONN_OPT_DISABLE_DECORATIONS:Отключить обрамление окна
+							cCONN_OPT_DISABLE_CLIPBOARD_SYNC:Отключить синхронизацию буфера обмена
+							bРаскладка клавиатуры: '"$_UI_MENU_KB_LAYOUT"'
+							vkb_layout
+							t
+							hДисплей
+							tМасштабирование:
+							rCONN_OPT_DESKTOP_SCALE:Подстраивать разрешение под размер окна
+							vdynamic
+							rCONN_OPT_DESKTOP_SCALE:Растягивать изображение под размер окна
+							vstretch
+							rCONN_OPT_DESKTOP_SCALE:Отключить
+							v
+							t
+							tРазрешение удалённого дисплея:
+							r_DESKTOP_SIZING:Как на сервере
+							vserver
+							r_DESKTOP_SIZING:Использовать все мониторы
+							vmultimon
+							r_DESKTOP_SIZING:По размеру свободного места на рабочем столе (рекомендуется использовать с отключенным обрамлением окна)
+							vworkarea
+							r_DESKTOP_SIZING:Произвольно
+							vcustom
+							'"$([ "$_DESKTOP_SIZING" = custom ] && printf %s\\n \
+								'iCONN_OPT_DESKTOP_SIZE:Разрешение:' \
+								'bВыбрать' vdesktop_size_by_window
+							)"'
+							t
+							hИнтеграция
+							tВоспроизведение звука:
+							rCONN_OPT_AUDIO_PLAYBACK_MODE:Отключено
+							v
+							rCONN_OPT_AUDIO_PLAYBACK_MODE:Воспроизводится на удалённом хосте
+							vremote
+							rCONN_OPT_AUDIO_PLAYBACK_MODE:Воспроизводится на стороне клиента
+							vlocal
+							'"$([ "$CONN_OPT_AUDIO_PLAYBACK_MODE" = local ] && {
+								printf %s\\n \
+									'tЗвуковая подсистема:' \
+									'rCONN_OPT_AUDIO_PLAYBACK_METHOD:PulseAudio' v \
+									'rCONN_OPT_AUDIO_PLAYBACK_METHOD:ALSA' valsa \
+									'iCONN_OPT_AUDIO_PLAYBACK_LATENCY:Задержка (мс):'
+							})"'
+							t
+							tЗахват звука:
+							rCONN_OPT_AUDIO_CAPTURE_METHOD:Отключено
+							v
+							rCONN_OPT_AUDIO_CAPTURE_METHOD:PulseAudio
+							vpulse
+							rCONN_OPT_AUDIO_CAPTURE_METHOD:ALSA
+							valsa
+							t
+							tПеренаправление дисков:
+							'"$_UI_MENU_DISKS"'
+							i_DISK_NAME:Имя диска:
+							i_DISK_PATH:Путь к каталогу:
+							bВыбрать каталог
+							vchange_disk_path
+							b+ Добавить
+							vadd_disk
+							t
+							hПроизводительность
+							cCONN_OPT_DISABLE_COMPRESSION:Отключить сжатие
+							t
+							cCONN_OPT_DISABLE_SMOOTH_FONTS:Отключить сглаживание шрифтов (ClearType)
+							cCONN_OPT_DISABLE_COMPOSITING:Отключить композицию рабочего стола
+							cCONN_OPT_DISABLE_WINDOW_DRAG:Отключить отображение содержимого окна при перетаскивании
+							cCONN_OPT_DISABLE_MENU_ANIMS:Отключить визуальные эффекты при отображении меню и окон
+							cCONN_OPT_DISABLE_THEMES:Отключить стили оформления
+							cCONN_OPT_DISABLE_WALLPAPER:Отключить фон рабочего стола
+							t
+							hДополнительно
+							iCONN_OPT_XFREERDP_ARGS:Дополнительные аргументы для xfreerdp:
+							t
+							bOK
+							vok'
+						;;
+					*)
+						UI_MENU='
+							iCONN_URL_HOST:Server address:
+							iCONN_URL_PORT:Port:
+							iCONN_URL_USER:User name[@domain]:
+							pCONN_OPT_PASSWORD:Password:
+							t
+							hMain
+							cCONN_OPT_FULLSCREEN:Run in fullscreen mode
+							cCONN_OPT_DISABLE_DECORATIONS:Disable window decorations
+							cCONN_OPT_DISABLE_CLIPBOARD_SYNC:Disable clipboard synchronization
+							bKeyboard layout: '"$_UI_MENU_KB_LAYOUT"'
+							vkb_layout
+							t
+							hDisplay
+							tScaling:
+							rCONN_OPT_DESKTOP_SCALE:Adjust the resolution to fit the window
+							vdynamic
+							rCONN_OPT_DESKTOP_SCALE:Stretch the image to fit the window
+							vstretch
+							rCONN_OPT_DESKTOP_SCALE:Disable
+							v
+							t
+							tRemote display resolution:
+							r_DESKTOP_SIZING:As on the server
+							vserver
+							r_DESKTOP_SIZING:Use all monitors
+							vmultimon
+							r_DESKTOP_SIZING:By the size of free space on the desktop (it is recommended to use with disabled window decorations)
+							vworkarea
+							r_DESKTOP_SIZING:Custom
+							vcustom
+							'"$([ "$_DESKTOP_SIZING" = custom ] && printf %s\\n \
+								'iCONN_OPT_DESKTOP_SIZE:Resolution:' \
+								'bSelect' vdesktop_size_by_window
+							)"'
+							t
+							hIntegration
+							tSound playback:
+							rCONN_OPT_AUDIO_PLAYBACK_MODE:Disable
+							v
+							rCONN_OPT_AUDIO_PLAYBACK_MODE:Playback on remote host
+							vremote
+							rCONN_OPT_AUDIO_PLAYBACK_MODE:Playback on the client
+							vlocal
+							'"$([ "$CONN_OPT_AUDIO_PLAYBACK_MODE" = local ] && {
+								printf %s\\n \
+									'tAudio subsystem:' \
+									'rCONN_OPT_AUDIO_PLAYBACK_METHOD:PulseAudio' v \
+									'rCONN_OPT_AUDIO_PLAYBACK_METHOD:ALSA' valsa \
+									'iCONN_OPT_AUDIO_PLAYBACK_LATENCY:Задержка (мс):'
+							})"'
+							t
+							tSound capture:
+							rCONN_OPT_AUDIO_CAPTURE_METHOD:Disable
+							v
+							rCONN_OPT_AUDIO_CAPTURE_METHOD:PulseAudio
+							vpulse
+							rCONN_OPT_AUDIO_CAPTURE_METHOD:ALSA
+							valsa
+							t
+							tDisks redirection:
+							'"$_UI_MENU_DISKS"'
+							i_DISK_NAME:Disk name:
+							i_DISK_PATH:Directory path:
+							bSelect directory
+							vchange_disk_path
+							b+ Add
+							vadd_disk
+							t
+							hPerformance
+							cCONN_OPT_DISABLE_COMPRESSION:Disable compression
+							t
+							cCONN_OPT_DISABLE_SMOOTH_FONTS:Disable font smoothing (ClearType)
+							cCONN_OPT_DISABLE_COMPOSITING:Disable desktop composition
+							cCONN_OPT_DISABLE_WINDOW_DRAG:Turn off the display of window contents when dragging
+							cCONN_OPT_DISABLE_MENU_ANIMS:Disable visual effects when displaying menus and windows
+							cCONN_OPT_DISABLE_THEMES:Disable themes
+							cCONN_OPT_DISABLE_WALLPAPER:Disable wallpaper
+							t
+							hAdditional
+							iCONN_OPT_XFREERDP_ARGS:Additional arguments for xfreerdp:
+							t
+							bOK
+							vok'
+						;;
+					esac
+				}
+				ui "$UI_TITLE_PRE$UI_TITLE_MAIN" '' '' "$_MAIN_CURSOR_POS" || break
+				_MAIN_CURSOR_POS=$UI_MENU_CURSOR_POS
+				case $UI_CHOICE in
+				kb_layout)
+					ui "$UI_TITLE_PRE$UI_TITLE_MAIN" "$(l10n_msg ru 'Раскладка клавиатуры' 'Keyboard layout'):" "$(
+						l10n_msg ru 'bСистемная' 'bSystem'
+						printf %s\\n v t
+						xfreerdp /kbd-list | LC_ALL=C awk -- 'BEGIN { ARGC = 1; print_space = 0 } {
+							if($1 ~ /^0x[0-9A-Fa-f]+$/) {
+								layout_code = $1
+								if(!sub(/^[\1-\40]*[^\1-\40]+[\1-\40]+/, "")) next
+								print_space = 1
+								print "b" $0 "\nv" layout_code
+								if(layout_code == ARGV[1]) print "s"
+							} else if($0 != "") {
+								if(print_space) print "t"
+								print_space = 1
+								print "h" $0
+							}
+						}' "$CONN_OPT_KB_LAYOUT"
+					)" || continue
+					CONN_OPT_KB_LAYOUT=$UI_CHOICE
+					;;
+				desktop_size_by_window)
+					checkutil xwininfo || { wait_user; continue; }
+					CONN_OPT_DESKTOP_SIZE=$(get_window_geometry 'print w "x" h' 2>/dev/null)
+					;;
+				change_disk_path)
+					ui_select_file_callback() {
+						[ -d "$UI_CHOICE" ]
+					}
+					ui_select_file "$UI_TITLE_PRE$UI_TITLE_MAIN - $(l10n_msg ru 'Каталог виртуального диска' 'Virtual disk directory')" "$(l10n_msg ru 'Нажмите "пробел" для выбора каталога, "q" или "Esc Esc" для выхода' 'Press "space" to select directory, "q" or "Esc Esc" to exit')" "$_DISK_PATH" || continue
+					_DISK_PATH=$UI_CHOICE
+					;;
+				add_disk)
+					{
+						[ -n "$_DISK_NAME" ] && [ -n "$_DISK_PATH" ] &&
+						LC_ALL=C awk -- 'BEGIN {
+							disks_count = split(ARGV[1], disks, /\/\/+/)
+							for(i = 1; i <= disks_count; i++) {
+								sub(/\/.*/, "", disks[i])
+								if(disks[i] == ARGV[2]) exit 1
+							}
+						}' "$CONN_OPT_DISKS" "$_DISK_NAME"
+					} || continue
+					_MAIN_CURSOR_POS=$((_MAIN_CURSOR_POS + 1))
+					[ "$_DISK_PATH" = / ] && _DISK_PATH=/.
+					if [ -n "$CONN_OPT_DISKS" ]; then
+						CONN_OPT_DISKS=$CONN_OPT_DISKS//$_DISK_NAME$_DISK_PATH
+					else
+						CONN_OPT_DISKS=$_DISK_NAME$_DISK_PATH
+					fi
+					[ "$_DISK_PATH" = /. ] && _DISK_PATH=/
+					;;
+				delete_disk:*)
+					eval "CONN_OPT_DISKS=$(LC_ALL=C awk -- 'BEGIN {
+						sub(/^[^:]+:/, "", ARGV[2])
+						disks_count = split(ARGV[1], disks, /\/\/+/)
+						ARGV[1] = ""
+						for(i = 1; i <= disks_count; i++) {
+							disk_name = disks[i]
+							sub(/\/.*/, "", disk_name)
+							if(disk_name == ARGV[2]) continue
+							if(ARGV[1] != "") ARGV[1] = ARGV[1] "//"
+							ARGV[1] = ARGV[1] disks[i]
+						}
+						print ARGV[1]
+					}' "$CONN_OPT_DISKS" "$UI_CHOICE" | shell_escape)"
+					;;
+				ok) break;;
+				esac
+			done
+			;;
+		get_conf_vars_filter)
+			CONF_VARS_FILTER='
+				v["CONN_URL_PATH"] = ""
+				var = "CONN_URL_PORT"; if(v[var] == 3389) v[var] = ""
+				var = "CONN_OPT_FULLSCREEN"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_DISABLE_DECORATIONS"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_DISABLE_CLIPBOARD_SYNC"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_KB_LAYOUT"; if(v[var] !~ /^0x[0-9A-Fa-f]+$/) v[var] = ""
+				var = "CONN_OPT_DESKTOP_SCALE"
+				if(v[var] != "dynamic" && v[var] != "stretch") v[var] = ""
+				var = "CONN_OPT_DESKTOP_SIZE"
+				if(v[var] != "" && v[var] != "multimon" && v[var] != "workarea") {
+					gsub(/[^0-9x]/, "", v[var]); sub(/^0+/, "", v[var]); sub(/x0+/, "x", v[var])
+					if(match(v[var], /[0-9]+x[0-9]+/)) v[var] = substr(v[var], RSTART, RLENGTH)
+					else v[var] = ""
+				}
+				var = "CONN_OPT_AUDIO_PLAYBACK_MODE"
+				if(v[var] != "remote" && v[var] != "local") v[var] = ""
+				var = "CONN_OPT_AUDIO_PLAYBACK_METHOD"
+				if(v["CONN_OPT_AUDIO_PLAYBACK_MODE"] == "" || v["CONN_OPT_AUDIO_PLAYBACK_MODE"] == "remote") {
+					v[var] = ""
+					v["CONN_OPT_AUDIO_PLAYBACK_LATENCY"] = ""
+				} else {
+					if(v[var] != "alsa") v[var] = ""
+					var = "CONN_OPT_AUDIO_PLAYBACK_LATENCY"
+					if(v[var] != "") {
+						v[var] = int(v[var] + 0)
+						if(v[var] < 0) v[var] = 0
+					}
+				}
+				var = "CONN_OPT_AUDIO_CAPTURE_METHOD"
+				if(v[var] != "pulse" && v[var] != "alsa") v[var] = ""
+				var = "CONN_OPT_DISKS"
+				sub(/^\/+/, "", v[var]); sub(/\/+$/, "", v[var])
+				disks_count = split(v[var], disks, /\/\/+/)
+				v[var] = ""
+				split("", disks_names, ":")
+				for(i = 1; i <= disks_count; i++) {
+					disk_name = disks[i]
+					if(!sub(/\/.*/, "", disk_name) || disk_name in disks_names) continue
+					disks_names[disk_name] = ""
+					sub(/[\n,]/, " ", disk_name)
+					disk_path = disks[i] "/"
+					sub(/^[^\57]+/, "", disk_path)
+					gsub(/\/(\.\/)+/, "/", disk_path)
+					while(sub(/\/[^\/]+\/\.\.\//, "/", disk_path)) continue
+					sub(/\/\.\.\//, "/", disk_path)
+					if(disk_path == "/") disk_path = "/."
+					else sub(/\/$/, "", disk_path)
+					if(v[var] != "") v[var] = v[var] "//"
+					v[var] = v[var] disk_name disk_path
+				}
+				var = "CONN_OPT_DISABLE_COMPRESSION"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_DISABLE_SMOOTH_FONTS"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_DISABLE_COMPOSITING"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_DISABLE_WINDOW_DRAG"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_DISABLE_MENU_ANIMS"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_DISABLE_THEMES"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_DISABLE_WALLPAPER"; v[var] = v[var] + 0 > 0 ? 1 : ""'
+			;;
+		esac
+		;;
+	vnc|vnci)
+		case $1 in
+		protocols_list)
+			{ [ $# -lt 3 ] || [ "$3" = nonmountable ]; } && printf %s\\n "$2"
+			;;
+		options_list)
+			printf %s\\n password fullscreen view_only no_recv_clipboard no_send_clipboard fullscreen_system_keys menu_key desktop_size dot_when_no_cursor compression_autoselect compression_level use_jpeg jpeg_quality colors encoding vncviewer_args
+			;;
+		pre_connect)
+			checkutil xtigervncviewer || return 1
+			[ -n "$PASSWORD" ] && CONN_OPT_PASSWORD=$PASSWORD
+			[ -z "$CONN_OPT_PASSWORD" ] ||
+				checkutil tigervncpasswd || return 1
+			CONN_COMMAND='xtigervncviewer -Shared=1 -SendPrimary=0 -MaxCutText=4194304'
+			[ "$CONN_OPT_FULLSCREEN" != 1 ]
+			CONN_COMMAND=$CONN_COMMAND' -FullScreen='$?
+			if [ "$CONN_OPT_VIEW_ONLY" = 1 ]; then
+				CONN_COMMAND=$CONN_COMMAND' -ViewOnly=1 -FullscreenSystemKeys=0'
+			else
+				CONN_COMMAND=$CONN_COMMAND' -ViewOnly=0'
+				[ "$CONN_OPT_FULLSCREEN_SYSTEM_KEYS" != 1 ]
+				CONN_COMMAND=$CONN_COMMAND' -FullscreenSystemKeys='$?
+			fi
+			[ "$CONN_OPT_NO_RECV_CLIPBOARD" = 1 ]
+			CONN_COMMAND=$CONN_COMMAND' -AcceptClipboard='$?
+			[ "$CONN_OPT_NO_SEND_CLIPBOARD" = 1 ]
+			CONN_COMMAND=$CONN_COMMAND' -SendClipboard='$?
+			if [ -n "$CONN_OPT_MENU_KEY" ]; then
+				CONN_COMMAND=$CONN_COMMAND' -MenuKey="$CONN_OPT_MENU_KEY"'
+			else
+				CONN_COMMAND=$CONN_COMMAND' -MenuKey=F12'
+			fi
+			case $CONN_OPT_DESKTOP_SIZE in
+			'') CONN_COMMAND=$CONN_COMMAND' -RemoteResize=0';;
+			window) CONN_COMMAND=$CONN_COMMAND' -RemoteResize=1';;
+			*) CONN_COMMAND=$CONN_COMMAND' -RemoteResize=0 -DesktopSize="$CONN_OPT_DESKTOP_SIZE"';;
+			esac
+			[ "$CONN_OPT_DOT_WHEN_NO_CURSOR" != 1 ]
+			CONN_COMMAND=$CONN_COMMAND' -DotWhenNoCursor='$?
+			[ "$CONN_OPT_COMPRESSION_AUTOSELECT" != 1 ]
+			CONN_COMMAND=$CONN_COMMAND' -AutoSelect='$?
+			if [ -n "$CONN_OPT_COMPRESSION_LEVEL" ]; then
+				CONN_COMMAND=$CONN_COMMAND' -CompressLevel="$CONN_OPT_COMPRESSION_LEVEL"'
+			else
+				CONN_COMMAND=$CONN_COMMAND' -CompressLevel=2'
+			fi
+			if [ "$CONN_OPT_USE_JPEG" = 0 ]; then
+				CONN_COMMAND=$CONN_COMMAND' -NoJpeg=1'
+			else
+				CONN_COMMAND=$CONN_COMMAND' -NoJpeg=0'
+				if [ -n "$CONN_OPT_JPEG_QUALITY" ]; then
+					CONN_COMMAND=$CONN_COMMAND' -QualityLevel="$CONN_OPT_JPEG_QUALITY"'
+				else
+					CONN_COMMAND=$CONN_COMMAND' -QualityLevel=8'
+				fi
+			fi
+			if [ -n "$CONN_OPT_COLORS" ]; then
+				CONN_COMMAND=$CONN_COMMAND' -FullColor=0'
+				case $CONN_OPT_COLORS in
+				256)
+					CONN_COMMAND=$CONN_COMMAND' -LowColorLevel=2';;
+				64)
+					CONN_COMMAND=$CONN_COMMAND' -LowColorLevel=1';;
+				8)
+					CONN_COMMAND=$CONN_COMMAND' -LowColorLevel=0';;
+				esac
+			else
+				CONN_COMMAND=$CONN_COMMAND' -FullColor=1'
+			fi
+			if [ -n "$CONN_OPT_ENCODING" ]; then
+				CONN_COMMAND=$CONN_COMMAND' -PreferredEncoding="$CONN_OPT_ENCODING"'
+			else
+				CONN_COMMAND=$CONN_COMMAND' -PreferredEncoding=Tight'
+			fi
+			[ -n "$CONN_OPT_VNCVIEWER_ARGS" ] && CONN_COMMAND=$CONN_COMMAND' '$CONN_OPT_VNCVIEWER_ARGS
+			CONN_COMMAND=$CONN_COMMAND' "$@"'
+			[ -n "$CONN_OPT_PASSWORD" ] && CONN_COMMAND=$CONN_COMMAND' -PasswordFile=/dev/stdin'
+			if [ "$CONN_URL_PROTO" = vnc ]; then
+				CONN_COMMAND=$CONN_COMMAND' "$CONN_URL_HOST'
+				[ -n "$CONN_URL_PORT" ] && CONN_COMMAND=$CONN_COMMAND'::$CONN_URL_PORT'
+				CONN_COMMAND=$CONN_COMMAND'"'
+			else
+				CONN_COMMAND=$CONN_COMMAND' -listen "$CONN_URL_PORT"'
+			fi
+			[ -n "$CONN_OPT_PASSWORD" ] &&
+				CONN_COMMAND='password=$(
+					tigervncpasswd -f <<- EOF &&
+					$CONN_OPT_PASSWORD
+					EOF
+					echo .
+				) && '$CONN_COMMAND' <<- EOF
+				${password%.}
+				EOF
+				'
+			return 0
+			;;
+		ui_configure)
+			unset _MAIN_CURSOR_POS
+			case $CONN_OPT_DESKTOP_SIZE in
+			'') _DESKTOP_SIZING=server;;
+			window) _DESKTOP_SIZING=window;;
+			*) _DESKTOP_SIZING=custom;;
+			esac
+			case $CONN_OPT_USE_JPEG in
+			'') _USE_JPEG=1;;
+			0) _USE_JPEG=0;;
+			esac
+			while :; do
+				ui_callback() {
+					[ $UI_INIT -eq 1 ] || { [ -n "$UI_VAR_NAME" ] && { [ -z "$UI_EVENT" ] || [ "$UI_EVENT" = edit_complete ]; }; } || return 0
+					filter_conf_vars
+					case $UI_VAR_NAME in
+					CONN_URL_PROTO) UI_MENU_CURSOR_POS=6;;
+					_DESKTOP_SIZING)
+						case $_DESKTOP_SIZING in
+						server) unset CONN_OPT_DESKTOP_SIZE;;
+						window) CONN_OPT_DESKTOP_SIZE=window;;
+						custom)
+							{ [ -z "$CONN_OPT_DESKTOP_SIZE" ] || [ "$CONN_OPT_DESKTOP_SIZE" = window ]; } &&
+								CONN_OPT_DESKTOP_SIZE=$(get_window_geometry 'print w "x" h' root 2>/dev/null)
+							;;
+						esac
+						;;
+					_USE_JPEG)
+						if [ $_USE_JPEG -eq 0 ]; then
+							CONN_OPT_USE_JPEG=0
+						else
+							unset CONN_OPT_USE_JPEG
+						fi
+						;;
+					esac
+					case $LANG_CODE_MSG in
+					ru)
+						UI_MENU="
+							$([ "$CONN_URL_PROTO" = vnc ] && printf %s 'iCONN_URL_HOST:Адрес сервера:')"'
+							iCONN_URL_PORT:Порт:
+							pCONN_OPT_PASSWORD:Пароль:
+							t
+							tПротокол:
+							rCONN_URL_PROTO:VNC
+							vvnc
+							rCONN_URL_PROTO:VNCI (сервер устанавливает соединение с клиентом)
+							vvnci
+							t
+							hОсновные
+							cCONN_OPT_FULLSCREEN:Запускать в полноэкранном режиме
+							cCONN_OPT_VIEW_ONLY:Только просмотр
+							cCONN_OPT_FULLSCREEN_SYSTEM_KEYS:Захват клавиатуры в полноэкранном режиме
+							cCONN_OPT_NO_RECV_CLIPBOARD:Не передавать буфер обмена с удалённого хоста на локальный
+							cCONN_OPT_NO_SEND_CLIPBOARD:Не передавать буфер обмена с локального хоста на удалённый
+							t
+							bКлавиша вызова меню: '"$(if [ -z "$CONN_OPT_MENU_KEY" ]; then printf %s F12; else printf %s "$CONN_OPT_MENU_KEY"; fi)"'
+							vchange_menu_key
+							t
+							hДисплей
+							tРазрешение удалённого дисплея:
+							r_DESKTOP_SIZING:Как на сервере
+							vserver
+							r_DESKTOP_SIZING:Подстраивать под размер окна
+							vwindow
+							r_DESKTOP_SIZING:Произвольно
+							vcustom
+							'"$([ "$_DESKTOP_SIZING" = custom ] && printf %s\\n \
+								'iCONN_OPT_DESKTOP_SIZE:Разрешение:' \
+								'bВыбрать' vdesktop_size_by_window
+							)"'
+							t
+							cCONN_OPT_DOT_WHEN_NO_CURSOR:Показывать курсор в виде точки, когда сервер передаёт невидимый курсор
+							t
+							hПроизводительность
+							cCONN_OPT_COMPRESSION_AUTOSELECT:Автоматический выбор сжатия на основе скорости соединения с сервером
+							iCONN_OPT_COMPRESSION_LEVEL:Уровень сжатия без потерь (0-6, по умолчанию: 2):
+							c_USE_JPEG:Использовать JPEG-сжатие
+							'"$([ $_USE_JPEG -eq 1 ] && printf %s\\n \
+								'iCONN_OPT_JPEG_QUALITY:Качество JPEG (0-9, по умолчанию: 8):'
+							)"'
+							t
+							tКоличество цветов:
+							rCONN_OPT_COLORS:True color
+							v
+							rCONN_OPT_COLORS:256
+							v256
+							rCONN_OPT_COLORS: 64
+							v64
+							rCONN_OPT_COLORS:  8
+							v8
+							t
+							tТип кодирования:
+							rCONN_OPT_ENCODING:Tight
+							v
+							rCONN_OPT_ENCODING:ZRLE
+							rCONN_OPT_ENCODING:hextile
+							rCONN_OPT_ENCODING:raw
+							t
+							hДополнительно
+							iCONN_OPT_VNCVIEWER_ARGS:Дополнительные аргументы для vncviewer:
+							t
+							bOK
+							vok'
+						;;
+					*)
+						UI_MENU="
+							$([ "$CONN_URL_PROTO" = vnc ] && printf %s 'iCONN_URL_HOST:Server address:')"'
+							iCONN_URL_PORT:Port:
+							pCONN_OPT_PASSWORD:Password:
+							t
+							tProtocol:
+							rCONN_URL_PROTO:VNC
+							vvnc
+							rCONN_URL_PROTO:VNCI (server establishes connection with client)
+							vvnci
+							t
+							hMain
+							cCONN_OPT_FULLSCREEN:Run in full screen mode
+							cCONN_OPT_VIEW_ONLY:View only
+							cCONN_OPT_FULLSCREEN_SYSTEM_KEYS:Grab keyboard in fullscreen mode
+							cCONN_OPT_NO_RECV_CLIPBOARD:Do not receive the clipboard from a remote host to a local host
+							cCONN_OPT_NO_SEND_CLIPBOARD:Do not send the clipboard from local host to remote host
+							t
+							bMenu key: '"$(if [ -z "$CONN_OPT_MENU_KEY" ]; then printf %s F12; else printf %s "$CONN_OPT_MENU_KEY"; fi)"'
+							vchange_menu_key
+							t
+							hDisplay
+							tRemote display resolution:
+							r_DESKTOP_SIZING:As on the server
+							vserver
+							r_DESKTOP_SIZING:Adjust to window size
+							vwindow
+							r_DESKTOP_SIZING:Custom
+							vcustom
+							'"$([ "$_DESKTOP_SIZING" = custom ] && printf %s\\n \
+								'iCONN_OPT_DESKTOP_SIZE:Resolution:' \
+								'bSelect' vdesktop_size_by_window
+							)"'
+							t
+							cCONN_OPT_DOT_WHEN_NO_CURSOR:Show the dot cursor when the server sends an invisible cursor
+							t
+							hPerformance
+							cCONN_OPT_COMPRESSION_AUTOSELECT:Automatic compression selection based on the speed of the connection to the server
+							iCONN_OPT_COMPRESSION_LEVEL:Lossless compression level (0-6, default: 2):
+							c_USE_JPEG:Use JPEG compression
+							'"$([ $_USE_JPEG -eq 1 ] && printf %s\\n \
+								'iCONN_OPT_JPEG_QUALITY:JPEG quality (0-9, default: 8):'
+							)"'
+							t
+							tNumber of colors:
+							rCONN_OPT_COLORS:True color
+							v
+							rCONN_OPT_COLORS:256
+							v256
+							rCONN_OPT_COLORS: 64
+							v64
+							rCONN_OPT_COLORS:  8
+							v8
+							t
+							tEncoding:
+							rCONN_OPT_ENCODING:Tight
+							v
+							rCONN_OPT_ENCODING:ZRLE
+							rCONN_OPT_ENCODING:hextile
+							rCONN_OPT_ENCODING:raw
+							t
+							hAdditional
+							iCONN_OPT_VNCVIEWER_ARGS:Additional arguments for vncviewer:
+							t
+							bOK
+							vok'
+						;;
+					esac
+				}
+				ui "$UI_TITLE_PRE$UI_TITLE_MAIN" '' '' "$_MAIN_CURSOR_POS" || break
+				_MAIN_CURSOR_POS=$UI_MENU_CURSOR_POS
+				case $UI_CHOICE in
+				change_menu_key)
+					ui "$UI_TITLE_PRE$UI_TITLE_MAIN" "$(l10n_msg ru 'Клавиша вызова меню:' 'Menu key:')" '
+						bF1
+						bF2
+						bF3
+						bF4
+						bF5
+						bF6
+						bF7
+						bF8
+						bF9
+						bF10
+						bF11
+						bF12
+						v
+						bPause
+						bPrint
+						bScroll_Lock
+						bEscape
+						bInsert
+						bDelete
+						bHome
+						bPage_Up
+						bPage_Down' || continue
+					CONN_OPT_MENU_KEY=$UI_CHOICE
+					;;
+				desktop_size_by_window)
+					checkutil xwininfo || { wait_user; continue; }
+					CONN_OPT_DESKTOP_SIZE=$(get_window_geometry 'print w "x" h' 2>/dev/null)
+					;;
+				ok) break;;
+				esac
+			done
+			;;
+		get_conf_vars_filter)
+			CONF_VARS_FILTER='
+				var = "CONN_URL_PORT"; if(v["CONN_URL_PROTO"] == "vnc" && v[var] == 5900) v[var] = ""
+				v["CONN_URL_USER"] = v["CONN_URL_PATH"] = ""
+				var = "CONN_OPT_FULLSCREEN"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_VIEW_ONLY"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_FULLSCREEN_SYSTEM_KEYS"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_NO_RECV_CLIPBOARD"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_NO_SEND_CLIPBOARD"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_MENU_KEY"; if(v[var] !~ /^(F([1-9]|11)|Pause|Print|Scroll_Lock|Escape|Insert|Delete|Home|Page_Up|Page_Down)$/) v[var] = ""
+				var = "CONN_OPT_DESKTOP_SIZE"
+				if(v[var] != "" && v[var] != "window") {
+					gsub(/[^0-9x]/, "", v[var]); sub(/^0+/, "", v[var]); sub(/x0+/, "x", v[var])
+					if(match(v[var], /[0-9]+x[0-9]+/)) v[var] = substr(v[var], RSTART, RLENGTH)
+					else v[var] = ""
+				}
+				var = "CONN_OPT_DOT_WHEN_NO_CURSOR"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_COMPRESSION_AUTOSELECT"; v[var] = v[var] + 0 > 0 ? 1 : ""
+				var = "CONN_OPT_COMPRESSION_LEVEL"
+				if(v[var] != "") {
+					v[var] = int(v[var] + 0)
+					if(v[var] < 0 || v[var] > 6) v[var] = ""
+				}
+				var = "CONN_OPT_USE_JPEG"
+				if(v[var] == "" || v[var] + 0 > 0) {
+					v[var] = ""
+					var = "CONN_OPT_JPEG_QUALITY"
+					if(v[var] != "") {
+						v[var] = int(v[var] + 0)
+						if(v[var] < 0) v[var] = 0
+						else if(v[var] > 9) v[var] = 9
+					}
+				} else {
+					v[var] = 0
+					v["CONN_OPT_JPEG_QUALITY"] = ""
+				}
+				var = "CONN_OPT_COLORS"; if(v[var] !~ /^(256|64|8)$/) v[var] = ""
+				var = "CONN_OPT_ENCODING"; if(v[var] !~ /^(ZRLE|hextile|raw)$/) v[var] = ""'
+			;;
+		esac
+		;;
+	esac; fi
+}
+
+unset \
+	ACTION \
+	KEY_FILE \
+	USE_CONN_PROTO \
+	CONN_OPTS_CLI \
+	ONEXIT_UNMOUNT \
+	ONEXIT_UNMOUNT_PROTO
+
+SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
+SCRIPT_NAME=$(basename -- "$0")
+SCRIPT_VERSION=2.1.0
+LANG_CODE_MSG=$(locale | sed -n 's/^[ \t]*LC_MESSAGES[^A-Za-z]\{1,\}\([A-Za-z]\{1,\}\).*/\1/; tp; b; :p p; q')
+DATA_PATH=$HOME/.$SCRIPT_NAME
+DATA_PATH_CHANGED=0
+CONN_IS_OPTS_SPECIFIED=0
+FORCE_UNMOUNT=0
+
+eval "register_signal_handler() { trap 'EXIT_CODE=\$?; trap '\\'\\'' \$SIGNALS; signal_handler EXIT' EXIT;$(
+	awk -- 'BEGIN { for(i = 1; i < ARGC; i++) print "trap \47trap \47\134\47\134\47\47 $SIGNALS; signal_handler " ARGV[i] "; register_signal_handler\47 " ARGV[i] }' $SIGNALS
+);}"
+
+if [ "$1" = --help ] || [ "$1" = -h ]; then
+	usage; exit 0
+elif [ "$1" = --version ] || [ "$1" = -v ]; then
+	printf %s\\n "$SCRIPT_NAME $SCRIPT_VERSION"
+	exit 0
+else while getopts lufi:p:o:d:a OPT; do case $OPT in
+	l)
+		[ -n "$ACTION" ] && usage_error ru 'Лишняя опция -l' 'Unnecessary option -l'
+		ACTION=list
+		;;
+	u)
+		[ -n "$ACTION" ] && usage_error ru 'Лишняя опция -u' 'Unnecessary option -u'
+		ACTION=unmount
+		;;
+	f) FORCE_UNMOUNT=1;;
+	i)
+		checkopt n
+		normalize_path "$OPTARG" KEY_FILE
+		;;
+	p)
+		checkopt r '^[A-Za-z][A-Za-z0-9+.-]*$'
+		USE_CONN_PROTO=$OPTARG
+		;;
+	o)
+		eval "$(LC_ALL=C awk -- 'BEGIN {
+			if(!match(ARGV[1], /^[a-z0-9_]+=/) || RLENGTH > 256) {
+				print "usage_error ru \"Некорректный синтаксис значения опции -o: \134`$OPTARG\47\" \"Incorrect syntax of the -o option value: \134`$OPTARG\47\""
+				exit
+			}
+			opt_name = substr(ARGV[1], 1, RLENGTH - 1)
+			ARGV[1] = substr(ARGV[1], RLENGTH + 1)
+			gsub(/\0/, "", ARGV[1]); gsub(/\47/, "\47\134\47\47", ARGV[1])
+			print "CONN_OPTS_CLI=${CONN_OPTS_CLI}" opt_name "\47 \47"
+			print "CONN_OPT_CLI_" toupper(opt_name) "=\47" ARGV[1] "\47"
+		}' "$OPTARG")"
+		;;
+	d)
+		checkopt n
+		DATA_PATH=$OPTARG
+		DATA_PATH_CHANGED=1
+		;;
+	a)
+		[ -n "$ACTION" ] && usage_error ru 'Лишняя опция -a' 'Unnecessary option -a'
+		ACTION=automount
+		;;
+	?) usage_error;;
+esac; done; fi
+shift $((OPTIND - 1))
+OPTIND=1
+
+[ -z "$ACTION" ] && {
+	if [ $# -eq 0 ]; then
+		ACTION=ui
+		. /usr/local/share/shell/tui.sh || exit 1
+	elif expr "$1" : '.*/' > /dev/null; then
+		ACTION=url_connect
+	else
+		ACTION=conf_connect
+	fi
+}
+
+[ "$ACTION" != unmount ] && [ $FORCE_UNMOUNT -eq 1 ] &&
+	usage_error ru 'Лишняя опция -f' 'Unnecessary option -f'
+
+[ "$ACTION" != conf_connect ] && [ -n "$USE_CONN_PROTO" ] &&
+	usage_error ru 'Лишняя опция -p' 'Unnecessary option -p'
+
+[ "$ACTION" != conf_connect ] && [ "$ACTION" != url_connect ] && [ -n "$CONN_OPTS_CLI" ] &&
+	usage_error ru 'Лишняя опция -o' 'Unnecessary option -o'
+
+[ "$ACTION" != url_connect ] && {
+	[ "$ACTION" != conf_connect ] && [ -n "$KEY_FILE" ] &&
+		usage_error ru 'Лишняя опция -i' 'Unnecessary option -i'
+	if [ "$ACTION" = conf_connect ] || [ "$ACTION" = unmount ]; then
+		[ "$ACTION" = unmount ] && {
+			if [ $# -eq 0 ]; then
+				ACTION=unmount_all
+			elif [ $# -ne 1 ]; then
+				usage_error ru 'Некорректное количество аргументов' 'Invalid number of arguments'
+			fi
+		}
+		[ $# -ne 0 ] && { [ -z "$1" ] || [ "$1" = . ] || [ "$1" = .. ] || expr "$1" : '.*/' > /dev/null || [ $(printf %s\\n "$1" | wc -l) -ne 1 ]; } &&
+			err 1 ru "недопустимое имя подключения: \`$1'" "invalid connection name: \`$1'"
+	elif [ $# -ne 0 ]; then
+		usage_error ru 'Некорректное количество аргументов' 'Invalid number of arguments'
+	fi
+}
+
+normalize_path "$DATA_PATH" DATA_PATH
+MOUNTS_PATH=$DATA_PATH/mnt
+CONF_DIR_PATH=$DATA_PATH/conf
+KEYS_DIR_PATH=$DATA_PATH/keys
+LOCKDIR=$DATA_PATH/lock
+
+signal_handler() {
+	case $1 in
+	EXIT)
+		[ "$ACTION" = ui ] && ui_mode reset
+		[ -n "$ONEXIT_UNMOUNT" ] && {
+			EXIT_CODE=1
+			unmount f "$ONEXIT_UNMOUNT" "$ONEXIT_UNMOUNT_PROTO"
+		}
+		release_lock "$LOCKDIR"
+		ps -Ao ppid,pid | awk 'BEGIN { ARGC = 1; exit_code = 1 }
+		$1 == ARGV[1] && $2 == ARGV[2] { exit_code = 0; exit }
+		END { exit exit_code }' $$ $! && {
+			killsubprocs TERM $!
+			wait $!
+		}
+		exit $EXIT_CODE
+		;;
+	*) exit;;
+	esac
+}
+register_signal_handler
+
+[ -e "$DATA_PATH" ] || mkdir -p -- "$DATA_PATH" || exit 1
+[ -e "$MOUNTS_PATH" ] || mkdir -p -- "$MOUNTS_PATH" || exit 1
+for _TMP in "$CONF_DIR_PATH" "$KEYS_DIR_PATH"; do
+	[ -e "$_TMP" ] || { mkdir -- "$_TMP" && chmod 700 "$_TMP"; } || exit 1
+done
+
+case $ACTION in
+conf_connect)
+	connect c "$@"
+	;;
+url_connect)
+	connect u "$@"
+	;;
+unmount)
+	get_lock "$LOCKDIR"
+	unmount $(
+		if [ $FORCE_UNMOUNT -eq 1 ]; then
+			echo f
+		else
+			echo s
+		fi
+	) "$MOUNTS_PATH/$1"
+	;;
+unmount_all)
+	get_lock "$LOCKDIR"
+	unmount_all $(
+		if [ $FORCE_UNMOUNT -eq 1 ]; then
+			echo f
+		else
+			echo s
+		fi
+	)
+	;;
+list)
+	get_lock "$LOCKDIR"
+	conn_list
+	;;
+automount)
+	automount
+	;;
+ui)
+	err() {
+		ui_mode off
+		printf %s "$SCRIPT_NAME: " >&2
+		if [ $# -gt 2 ]; then
+			if [ $(($# % 2)) -eq 0 ]; then
+				eval "shift; l10n_msg \"\$@\" >&2; exit $(printf %s "$1" | tr -dc 0-9)"
+			else
+				l10n_msg "$@" >&2
+				return 1
+			fi
+		elif [ $# -eq 2 ]; then
+			printf %s\\n "$2" >&2
+			exit $(printf %s "$1" | tr -dc 0-9)
+		else
+			printf %s\\n "$1" >&2
+			return 1
+		fi
+	}
+	app_ui_automount_cronjob() {
+		_TMP=$(
+			crontab -l 2>/dev/null | awk -- 'BEGIN {
+				ARGC = 1; cronjob_installed = 0
+				crontab_command = ARGV[2] " -a > /dev/null 2>&1"
+			} {
+				if($0 !~ /^[\1-\40]*(#.*)?$/ && NF == 10 && $6 " " $7 " " $8 " " $9 " " $10 == crontab_command) {
+					cronjob_installed = 1
+					if(ARGV[1] == "check" || ARGV[1] == "install") exit
+					if(ARGV[1] == "uninstall") next
+				}
+				if(ARGV[1] != "check") print $0
+			} END {
+				if(!cronjob_installed && ARGV[1] == "install") print "* * * * *\t" crontab_command
+				if(cronjob_installed) exit 0
+				else exit 10
+			}' "$1" "$SCRIPT_NAME"
+		)
+		case $? in
+		0)
+			case $1 in
+			check|install) return 0;;
+			esac
+			;;
+		10)
+			case $1 in
+			check) return 1;;
+			uninstall) return 0;;
+			esac
+			;;
+		*) return 2;;
+		esac
+		printf %s\\n "$_TMP" | crontab 2>/dev/null
+	}
+	app_ui_conn_configure() {
+		UI_TITLE_MAIN=" - $(l10n_msg ru 'Конфигурация подключения' 'Connection configuration') \"$SELECTED_CONN_NAME\""
+		CONN_HAS_KEY=0
+		get_lock "$LOCKDIR"
+		parse_conf '' "$CONF_DIR_PATH/$SELECTED_CONN_NAME" || {
+			release_lock "$LOCKDIR"; wait_user; return 1
+		}
+		[ -f "$KEYS_DIR_PATH/$SELECTED_CONN_NAME" ] && CONN_HAS_KEY=1
+		release_lock "$LOCKDIR"
+		filter_conf_vars f
+		protocol_hook ui_configure "$CONN_URL_PROTO"
+		{ [ "$UI_EVENT" = select ] && [ "$UI_CHOICE" = ok ]; } || return 1
+		gen_conf
+		get_lock "$LOCKDIR"
+		printf %s\\n "$CONN_CONF" > "$CONF_DIR_PATH/$SELECTED_CONN_NAME" || {
+			err ru "не удалось сохранить файл конфигурации подключения \`$CONF_DIR_PATH/$SELECTED_CONN_NAME'" "failed to save connection configuration file \`$CONF_DIR_PATH/$SELECTED_CONN_NAME'"
+			release_lock "$LOCKDIR"; wait_user; return 1
+		}
+		release_lock "$LOCKDIR"
+		return 0
+	}
+	app_ui_conn_copy() {
+		CONN_NAME=$SELECTED_CONN_NAME
+		while :; do
+			ui_callback() {
+				[ "$UI_CHOICE" = ok ] && app_ui_validate_conn_name
+			}
+			ui "$UI_TITLE_PRE - $(l10n_msg ru 'Копировать подключение' 'Copy connection') \"$SELECTED_CONN_NAME\"" '' "$(l10n_msg ru '
+				iCONN_NAME:Имя подключения:
+				bOK
+				vok' '
+				iCONN_NAME:Connection name:
+				bOK
+				vok')" || break
+			get_lock "$LOCKDIR"
+			[ -f "$CONF_DIR_PATH/$CONN_NAME" ] && {
+				err ru "файл конфигурации подключения \`$CONF_DIR_PATH/$CONN_NAME' уже существует" "connection configuration file \`$CONF_DIR_PATH/$CONN_NAME' is already exists"
+				release_lock "$LOCKDIR"; wait_user; continue
+			}
+			is_exists "$MOUNTS_PATH/$CONN_NAME" && {
+				! [ -e "$MOUNTS_PATH/$CONN_NAME" ] ||
+				is_mountpoint "$MOUNTS_PATH/$CONN_NAME"
+			} && {
+				err ru "точка монтирования \`$MOUNTS_PATH/$CONN_NAME' уже существует" "mountpoint \`$MOUNTS_PATH/$CONN_NAME' is already exists"
+				release_lock "$LOCKDIR"; wait_user; continue
+			}
+			{
+				cp -p "$CONF_DIR_PATH/$SELECTED_CONN_NAME" "$CONF_DIR_PATH/$CONN_NAME" && {
+					! [ -f "$KEYS_DIR_PATH/$SELECTED_CONN_NAME" ] ||
+					cp -p "$KEYS_DIR_PATH/$SELECTED_CONN_NAME" "$KEYS_DIR_PATH/$CONN_NAME"
+				}
+			} || {
+				rm -f "$CONF_DIR_PATH/$CONN_NAME" "$KEYS_DIR_PATH/$CONN_NAME"
+				err ru "не удалось создать копию подключения \`$SELECTED_CONN_NAME'" "failed to copy connection \`$SELECTED_CONN_NAME'"
+				release_lock "$LOCKDIR"; wait_user; continue
+			}
+			release_lock "$LOCKDIR"
+			SELECTED_CONN_NAME=$CONN_NAME
+			break
+		done
+	}
+	app_ui_conn_delete() {
+		while :; do
+			ui "$UI_TITLE_PRE - $(l10n_msg ru 'Удалить подключение' 'Delete connection') \"$SELECTED_CONN_NAME\"" \
+				"$(l10n_msg ru 'Удалить подключение' 'Delete connection') \"$SELECTED_CONN_NAME\"?" "$(l10n_msg ru '
+				qОтмена
+				bУдалить' '
+				qCancel
+				bDelete')" || break
+			get_lock "$LOCKDIR"
+			is_exists "$MOUNTS_PATH/$SELECTED_CONN_NAME" && {
+				! [ -e "$MOUNTS_PATH/$SELECTED_CONN_NAME" ] ||
+				is_mountpoint "$MOUNTS_PATH/$SELECTED_CONN_NAME"
+			} && {
+				unmount f "$MOUNTS_PATH/$SELECTED_CONN_NAME" || {
+					release_lock "$LOCKDIR"; wait_user; continue
+				}
+			}
+			{
+				rm -f "$CONF_DIR_PATH/$SELECTED_CONN_NAME" "$KEYS_DIR_PATH/$SELECTED_CONN_NAME" && {
+					! [ -e "$MOUNTS_PATH/$SELECTED_CONN_NAME" ] ||
+					if [ -d "$MOUNTS_PATH/$SELECTED_CONN_NAME" ]; then
+						rmdir "$MOUNTS_PATH/$SELECTED_CONN_NAME"
+					else
+						rm -f "$MOUNTS_PATH/$SELECTED_CONN_NAME"
+					fi
+				}
+			} || {
+				err ru "не удалось удалить подключение \`$SELECTED_CONN_NAME'" "failed to delete connection \`$SELECTED_CONN_NAME'"
+				release_lock "$LOCKDIR"; wait_user; continue
+			}
+			release_lock "$LOCKDIR"
+			unset SELECTED_CONN_NAME
+			break
+		done
+	}
+	app_ui_conn_rename() {
+		CONN_NAME=$SELECTED_CONN_NAME
+		while :; do
+			ui_callback() {
+				[ "$UI_CHOICE" = ok ] && app_ui_validate_conn_name
+			}
+			ui "$UI_TITLE_PRE - $(l10n_msg ru 'Переименовать подключение' 'Rename connection') \"$SELECTED_CONN_NAME\"" '' "$(l10n_msg ru '
+				iCONN_NAME:Имя подключения:
+				bOK
+				vok' '
+				iCONN_NAME:Connection name:
+				bOK
+				vok')" || break
+			get_lock "$LOCKDIR"
+			[ -f "$CONF_DIR_PATH/$CONN_NAME" ] && {
+				err ru "файл конфигурации подключения \`$CONF_DIR_PATH/$CONN_NAME' уже существует" "connection configuration file \`$CONF_DIR_PATH/$CONN_NAME' is already exists"
+				release_lock "$LOCKDIR"; wait_user; continue
+			}
+			is_exists "$MOUNTS_PATH/$CONN_NAME" && {
+				! [ -e "$MOUNTS_PATH/$CONN_NAME" ] ||
+				is_mountpoint "$MOUNTS_PATH/$CONN_NAME"
+			} && {
+				err ru "точка монтирования \`$MOUNTS_PATH/$CONN_NAME' уже существует" "mountpoint \`$MOUNTS_PATH/$CONN_NAME' is already exists"
+				release_lock "$LOCKDIR"; wait_user; continue
+			}
+			is_exists "$MOUNTS_PATH/$SELECTED_CONN_NAME" && {
+				! [ -e "$MOUNTS_PATH/$SELECTED_CONN_NAME" ] ||
+				is_mountpoint "$MOUNTS_PATH/$SELECTED_CONN_NAME"
+			} && {
+				unmount f "$MOUNTS_PATH/$SELECTED_CONN_NAME" || {
+					release_lock "$LOCKDIR"; wait_user; continue
+				}
+			}
+			{
+				mv -f "$CONF_DIR_PATH/$SELECTED_CONN_NAME" "$CONF_DIR_PATH/$CONN_NAME" && {
+					! [ -f "$KEYS_DIR_PATH/$SELECTED_CONN_NAME" ] ||
+					mv -f "$KEYS_DIR_PATH/$SELECTED_CONN_NAME" "$KEYS_DIR_PATH/$CONN_NAME"
+				} && {
+					! [ -e "$MOUNTS_PATH/$SELECTED_CONN_NAME" ] ||
+					mv -f "$MOUNTS_PATH/$SELECTED_CONN_NAME" "$MOUNTS_PATH/$CONN_NAME"
+				}
+			} || {
+				[ -f "$CONF_DIR_PATH/$SELECTED_CONN_NAME" ] ||
+					mv -f "$CONF_DIR_PATH/$CONN_NAME" "$CONF_DIR_PATH/$SELECTED_CONN_NAME"
+				[ -f "$KEYS_DIR_PATH/$SELECTED_CONN_NAME" ] ||
+					mv -f "$KEYS_DIR_PATH/$CONN_NAME" "$KEYS_DIR_PATH/$SELECTED_CONN_NAME"
+				[ -e "$MOUNTS_PATH/$SELECTED_CONN_NAME" ] ||
+					mv -f "$MOUNTS_PATH/$CONN_NAME" "$MOUNTS_PATH/$SELECTED_CONN_NAME"
+				err ru "не удалось переименовать подключение \`$SELECTED_CONN_NAME'" "failed to rename connection \`$SELECTED_CONN_NAME'"
+				release_lock "$LOCKDIR"; wait_user; continue
+			}
+			release_lock "$LOCKDIR"
+			SELECTED_CONN_NAME=$CONN_NAME
+			break
+		done
+	}
+	app_ui_get_conn_info() {
+		get_lock "$LOCKDIR"
+		IS_UNAVAILABLE=0
+		IS_MOUNTED=0
+		is_exists "$MOUNTS_PATH/$SELECTED_CONN_NAME" &&
+		is_mountpoint "$MOUNTS_PATH/$SELECTED_CONN_NAME" && {
+			IS_MOUNTED=1
+			[ -e "$MOUNTS_PATH/$SELECTED_CONN_NAME" ] || IS_UNAVAILABLE=1
+		}
+		if [ -f "$CONF_DIR_PATH/$SELECTED_CONN_NAME" ]; then
+			get_url_by_conn_name "$SELECTED_CONN_NAME" || {
+				release_lock "$LOCKDIR"; wait_user; return 1
+			}
+			HAS_CONFFILE=1
+		elif [ $IS_MOUNTED -eq 0 ]; then
+			release_lock "$LOCKDIR"; return 1
+		else
+			HAS_CONFFILE=0
+		fi
+		release_lock "$LOCKDIR"
+		[ $HAS_CONFFILE -eq 1 ] && {
+			CONN_URL_PROTO=$(printf %s "$URL_BY_CONN_NAME" | sed 's/:.*//')
+			protocol_hook protocols_list_all | grep -qxF "$CONN_URL_PROTO" || {
+				err ru "неподдерживаемый протокол: $CONN_URL_PROTO" "unsupported protocol: $CONN_URL_PROTO"
+				wait_user; app_ui_conn_delete; return 1
+			}
+		}
+	}
+	app_ui_key_set() {
+		ui_select_file_callback() {
+			[ -f "$UI_CHOICE" ]
+		}
+		ui_select_file "$UI_TITLE_PRE$UI_TITLE_MAIN - $(l10n_msg ru 'Выбор файла ключа аутентификации' 'Select authentication key file')" "$(l10n_msg ru 'Нажмите "q" или "Esc Esc" для отмены' 'Press "q" or "Esc Esc" to cancel')" "$HOME" || return 1
+		if [ -n "$SELECTED_CONN_NAME" ]; then
+			get_lock "$LOCKDIR"
+			{
+				printf '' > "$KEYS_DIR_PATH/$SELECTED_CONN_NAME" &&
+				chmod 600 "$KEYS_DIR_PATH/$SELECTED_CONN_NAME" &&
+				cat "$UI_CHOICE" > "$KEYS_DIR_PATH/$SELECTED_CONN_NAME"
+			} || {
+				rm -f "$KEYS_DIR_PATH/$SELECTED_CONN_NAME"
+				err ru "не удалось импортировать ключ аутентификации \`$KEYS_DIR_PATH/$SELECTED_CONN_NAME'" "failed to import authentication key \`$KEYS_DIR_PATH/$SELECTED_CONN_NAME'"
+				release_lock "$LOCKDIR"; wait_user; return 1
+			}
+			CONN_HAS_KEY=1
+			release_lock "$LOCKDIR"
+		else
+			CONN_HAS_KEY=1
+			KEY_FILE=$UI_CHOICE
+		fi
+		return 0
+	}
+	app_ui_key_unset() {
+		if [ -n "$SELECTED_CONN_NAME" ]; then
+			get_lock "$LOCKDIR"
+			rm -f "$KEYS_DIR_PATH/$SELECTED_CONN_NAME" || {
+				err ru "не удалось удалить ключ аутентификации \`$KEYS_DIR_PATH/$SELECTED_CONN_NAME'" "failed to delete authentication key \`$KEYS_DIR_PATH/$SELECTED_CONN_NAME'"
+				release_lock "$LOCKDIR"; wait_user; return 1
+			}
+			CONN_HAS_KEY=0
+			_MAIN_CURSOR_POS=$((_MAIN_CURSOR_POS - 1))
+			release_lock "$LOCKDIR"
+		else
+			unset KEY_FILE
+			CONN_HAS_KEY=0
+		fi
+		return 0
+	}
+	app_ui_validate_conn_name() {
+		if [ -z "$CONN_NAME" ]; then
+			unset UI_EVENT
+			UI_DESCRIPTION=$(l10n_msg ru 'Не указано имя подключения' 'Connection name is not specified')
+		elif checkval "$CONN_NAME" r '^(.*/.*|\.|\.\.)$'; then
+			unset UI_EVENT
+			UI_DESCRIPTION=$(l10n_msg ru 'Некорректное имя подключения' 'Invalid connection name')
+		elif [ -f "$CONF_DIR_PATH/$CONN_NAME" ]; then
+			unset UI_EVENT
+			UI_DESCRIPTION=$(l10n_msg ru 'Файл конфигурации подключения с таким именем уже существует' 'Connection configuration file with this name is already exists')
+		elif is_exists "$MOUNTS_PATH/$CONN_NAME" && {
+			! [ -e "$MOUNTS_PATH/$CONN_NAME" ] ||
+			is_mountpoint "$MOUNTS_PATH/$CONN_NAME"
+		}; then
+			unset UI_EVENT
+			UI_DESCRIPTION=$(l10n_msg ru 'Точка монтирования с таким именем уже существует' 'Mountpoint with this name is already exists')
+		fi
+	}
+	wait_user() {
+		[ -z "$UI_STTY_OLD_SETTINGS" ] && {
+			printf %s\\n "$(l10n_msg ru 'Нажмите Enter для продолжения или введите "q", чтобы выйти' 'Press Enter to continue or type "q" to exit')"
+			{ ! read -r _TMP || [ "$_TMP" = q ]; } && exit 0
+		}
+	}
+
+	unset CONN_LIST_CURSOR_POS
+	UI_TITLE_PRE="$(id -nu)@$(uname -n) - $SCRIPT_NAME"
+	[ $DATA_PATH_CHANGED -eq 0 ] && {
+		if app_ui_automount_cronjob check; then
+			AUTOMOUNT_CRONJOB_INSTALLED=1
+		else
+			AUTOMOUNT_CRONJOB_INSTALLED=0
+		fi
+	}
+
+	while :; do
+		unset APP_UI_ACTION
+		get_lock "$LOCKDIR"
+		CONN_LIST=$(conn_list)
+		release_lock "$LOCKDIR"
+		ui_callback() {
+			[ -n "$APP_UI_ACTION" ] && [ -z "$UI_CHOICE" ] && {
+				unset APP_UI_ACTION
+				[ "$UI_VAR_NAME" = AUTOMOUNT_CRONJOB_INSTALLED ] && {
+					[ $AUTOMOUNT_CRONJOB_INSTALLED -eq 1 ]
+					AUTOMOUNT_CRONJOB_INSTALLED=$?
+				}
+				return
+			}
+			if [ "$UI_VAR_NAME" = AUTOMOUNT_CRONJOB_INSTALLED ]; then
+				get_lock "$LOCKDIR"
+				if [ $AUTOMOUNT_CRONJOB_INSTALLED -eq 0 ]; then
+					app_ui_automount_cronjob uninstall || AUTOMOUNT_CRONJOB_INSTALLED=1
+				else
+					app_ui_automount_cronjob install || AUTOMOUNT_CRONJOB_INSTALLED=0
+				fi
+				release_lock "$LOCKDIR"
+			else
+				case $UI_INPUT in
+				'27 O S'|'27 [ [ D') UI_ACTION=select; APP_UI_ACTION=configure;;
+				'27 [ 1 5 ~'|'27 [ [ E') UI_ACTION=select; APP_UI_ACTION=copy;;
+				'27 O Q'|'27 [ 1 7 ~'|'27 [ [ B') UI_ACTION=select; APP_UI_ACTION=rename;;
+				'27 [ 3 ~'|'27 [ 1 9 ~') UI_ACTION=select; APP_UI_ACTION=delete;;
+				esac
+			fi
+		}
+		ui "$UI_TITLE_PRE" '' "$(
+			[ -n "$CONN_LIST" ] && {
+				printf %s\\n "$CONN_LIST" | awk '{ print "b" $0; sub(/^[^ ] /, ""); print "vconn:" $0 }'
+				printf t\\n
+			}
+			l10n_msg ru 'bСоздать подключение' 'bCreate connection'
+			printf %s\\n vcreate_connection
+			printf %s\\n "$CONN_LIST" | grep -q '^[*+!] ' && printf %s\\n \
+				"$(l10n_msg ru 'bОтмонтировать все файловые системы' 'bUnmount all filesystems')" vunmount_all \
+				"$(l10n_msg ru 'bПринудительно отмонтировать все файловые системы' 'bForce unmount all filesystems')" vforce_unmount_all
+			[ -n "$CONN_LIST" ] && printf %s\\n "$(l10n_msg ru 'bАвтоматически примонтировать файловые системы' 'bAutomount filesystems')" vautomount
+			[ $DATA_PATH_CHANGED -eq 0 ] && printf %s\\n "cAUTOMOUNT_CRONJOB_INSTALLED:$(l10n_msg ru 'Включить автоматическое монтирование файловых систем через cron' 'Enable automounting of filesystems using cron')"
+		)" "$CONN_LIST_CURSOR_POS" || break
+		CONN_LIST_CURSOR_POS=$UI_MENU_CURSOR_POS
+		[ -n "$APP_UI_ACTION" ] && {
+			SELECTED_CONN_NAME=$(printf %s "$UI_CHOICE" | sed -n 's/^conn://p')
+			[ -n "$SELECTED_CONN_NAME" ] && case $APP_UI_ACTION in
+			configure) app_ui_get_conn_info && app_ui_conn_configure;;
+			copy) app_ui_conn_copy;;
+			rename) app_ui_conn_rename;;
+			delete) app_ui_conn_delete;;
+			esac
+			continue
+		}
+		case $UI_CHOICE in
+		conn:*)
+			unset CONN_ACTIONS_CURSOR_POS
+			SELECTED_CONN_NAME=$(printf %s "$UI_CHOICE" | sed 's/^[^:]*://')
+			while :; do
+				app_ui_get_conn_info || break
+				ui "$UI_TITLE_PRE - $(l10n_msg ru 'Подключение' 'Connection') \"$SELECTED_CONN_NAME\"" "$(
+					protocol_hook protocols_list "$CONN_URL_PROTO" mountable | awk '{ exit } END { if(!NR) exit 1 }' && {
+						printf %s "$(l10n_msg ru 'Статус: ' 'Status: ')"
+						if [ $IS_MOUNTED -eq 1 ]; then
+							printf %s "$(l10n_msg ru 'примонтировано' 'mounted')"
+							[ $IS_UNAVAILABLE -eq 1 ] && printf %s "$(l10n_msg ru ', недоступно' ', unavailable')"
+							printf \\n%s "$(l10n_msg ru 'Точка монтирования' 'Mountpoint'): '$MOUNTS_PATH/$SELECTED_CONN_NAME'"
+						else
+							printf %s "$(l10n_msg ru 'отмонтировано' 'unmounted')"
+						fi
+					}
+				)" "$(
+					[ $HAS_CONFFILE -eq 1 ] && {
+						CONN_PROTOCOLS=$(
+							{ [ $IS_MOUNTED -eq 0 ] || [ $IS_UNAVAILABLE -eq 1 ] || protocol_hook protocols_list "$CONN_URL_PROTO" nonmountable | grep -qxF "$CONN_URL_PROTO"; } &&
+								printf %s\\n "$CONN_URL_PROTO"
+							protocol_hook protocols_list "$CONN_URL_PROTO" $([ $IS_MOUNTED -eq 1 ] && [ $IS_UNAVAILABLE -eq 0 ] && echo nonmountable) | grep -vxF "$CONN_URL_PROTO"
+						)
+						printf %s "$CONN_PROTOCOLS" | awk '{ print "b'"$(l10n_msg ru 'Подключить через' 'Connect via')"' " toupper($0) "\nvconnect:" $0 }'
+					}
+					[ $IS_MOUNTED -eq 1 ] && l10n_msg ru "$(printf %s\\n \
+						'bОтмонтировать' vunmount \
+						'bОтмонтировать принудительно' vforce_unmount
+					)" "$(printf %s\\n \
+						'bUnmount' vunmount \
+						'bForce unmount' vforce_unmount
+					)"
+					[ $HAS_CONFFILE -eq 1 ] && l10n_msg ru "$(printf %s\\n \
+						'bКонфигурация' vconfigure \
+						t \
+						'bКопировать' vcopy \
+						'bПереименовать' vrename \
+						'bУдалить' vdelete
+					)" "$(printf %s\\n \
+						'bConfiguration' vconfigure \
+						t \
+						'bCopy' vcopy \
+						'bRename' vrename \
+						'bDelete' vdelete
+					)"
+				)" "$CONN_ACTIONS_CURSOR_POS" || break
+				CONN_ACTIONS_CURSOR_POS=$UI_MENU_CURSOR_POS
+				case $UI_CHOICE in
+				connect:*)
+					USE_CONN_PROTO=$(printf %s "$UI_CHOICE" | sed 's/^[^:]*://')
+					ui_mode off
+					while :; do
+						connect c "$SELECTED_CONN_NAME" && [ -n "$CONN_MOUNTPOINT" ] && break
+						l10n_msg ru 'Нажмите Enter для повтора подключения или введите "q" для отмены' 'Press Enter to reconnect or type "q" to cancel'
+						{ ! read -r _TMP || [ "$_TMP" = q ]; } && {
+							ui_mode on
+							break
+						}
+					done
+					wait_user
+					unset USE_CONN_PROTO
+					;;
+				unmount|force_unmount)
+					ui_mode off
+					get_lock "$LOCKDIR"
+					unmount $(
+						if [ "$UI_CHOICE" = unmount ]; then
+							echo s
+						else
+							echo f
+						fi
+					) "$MOUNTS_PATH/$SELECTED_CONN_NAME"
+					release_lock "$LOCKDIR"
+					wait_user
+					;;
+				configure)
+					app_ui_conn_configure || continue
+					;;
+				copy)
+					app_ui_conn_copy
+					;;
+				rename)
+					app_ui_conn_rename
+					;;
+				delete)
+					app_ui_conn_delete
+					;;
+				esac
+				[ -n "$SELECTED_CONN_NAME" ] || break
+			done
+			;;
+		create_connection)
+			unset SELECTED_CONN_NAME
+			CONN_PROTO_CURSOR_POS=2
+			while :; do
+				ui "$UI_TITLE_PRE - $(l10n_msg ru 'Создать подключение' 'Create connection')" '' '
+					t'"$(l10n_msg ru 'Выберите протокол' 'Select protocol')"':
+					'"$(protocol_hook protocols_list_all | sed 's/^/b/')" "$CONN_PROTO_CURSOR_POS" || break
+				CONN_PROTO_CURSOR_POS=$UI_MENU_CURSOR_POS
+				unset CONN_OPTS CONN_URL_PATH CONN_URL_USER CONN_URL_PORT CONN_URL_HOST KEY_FILE
+				CONN_HAS_KEY=0
+				CONN_IS_OPTS_SPECIFIED=1
+				CONN_URL_PROTO=$UI_CHOICE
+				UI_TITLE_MAIN=" - $(l10n_msg ru 'Создать подключение' 'Create connection') - $CONN_URL_PROTO"
+				parse_conf get_unspecified_opts
+				while :; do
+					protocol_hook ui_configure "$CONN_URL_PROTO"
+					{ [ "$UI_EVENT" = select ] && [ "$UI_CHOICE" = ok ]; } || break
+					CONN_NAME=$CONN_URL_PROTO:
+					[ -n "$CONN_URL_USER" ] && CONN_NAME=$CONN_NAME$CONN_URL_USER@
+					CONN_NAME=$CONN_NAME$CONN_URL_HOST
+					[ -n "$CONN_URL_PORT" ] && CONN_NAME=$CONN_NAME:$CONN_URL_PORT
+					gen_conf
+					while :; do
+						ui_callback() {
+							[ "$UI_CHOICE" = save ] && app_ui_validate_conn_name
+						}
+						ui "$UI_TITLE_PRE$UI_TITLE_MAIN" '' "$(l10n_msg ru '
+							iCONN_NAME:Имя подключения:
+							bСохранить
+							vsave
+							t
+							bБыстрое подключение
+							vconnect' '
+							iCONN_NAME:Connection name:
+							bSave
+							vsave
+							t
+							bQuick connection
+							vconnect')" || break
+						case $UI_CHOICE in
+						save)
+							get_lock "$LOCKDIR"
+							[ -f "$CONF_DIR_PATH/$CONN_NAME" ] && {
+								err ru "файл конфигурации подключения \`$CONF_DIR_PATH/$CONN_NAME' уже существует" "connection configuration file \`$CONF_DIR_PATH/$CONN_NAME' is already exists"
+								release_lock "$LOCKDIR"; wait_user; continue
+							}
+							is_exists "$MOUNTS_PATH/$CONN_NAME" && {
+								! [ -e "$MOUNTS_PATH/$CONN_NAME" ] ||
+								is_mountpoint "$MOUNTS_PATH/$CONN_NAME"
+							} && {
+								err ru "точка монтирования \`$MOUNTS_PATH/$CONN_NAME' уже существует" "mountpoint \`$MOUNTS_PATH/$CONN_NAME' is already exists"
+								release_lock "$LOCKDIR"; wait_user; continue
+							}
+							{
+								printf '' > "$CONF_DIR_PATH/$CONN_NAME" &&
+								chmod 600 "$CONF_DIR_PATH/$CONN_NAME" &&
+								printf %s\\n "$CONN_CONF" > "$CONF_DIR_PATH/$CONN_NAME" &&
+								{ [ -z "$KEY_FILE" ] || {
+									printf '' > "$KEYS_DIR_PATH/$CONN_NAME" &&
+									chmod 600 "$KEYS_DIR_PATH/$CONN_NAME" &&
+									cat "$KEY_FILE" > "$KEYS_DIR_PATH/$CONN_NAME"
+								}; }
+							} || {
+								rm -f "$CONF_DIR_PATH/$CONN_NAME" "$KEYS_DIR_PATH/$CONN_NAME"
+								err ru "не удалось сохранить файл конфигурации подключения \`$CONF_DIR_PATH/$CONN_NAME'" "failed to save connection configuration file \`$CONF_DIR_PATH/$CONN_NAME'"
+								release_lock "$LOCKDIR"; wait_user; continue
+							}
+							release_lock "$LOCKDIR"
+							;;
+						connect)
+							USE_CONN_PROTO=$CONN_URL_PROTO
+							ui_mode off
+							eval "CONN_URL=$(printf %s "$CONN_CONF" | awk 'BEGIN { is_found = 0 } {
+								if(is_found) {
+									if($0 == "" || $0 ~ /^#/) next
+									if(sub(/^\./, "")) print $0
+									else exit
+								} else if(sub(/^url=/, "")) {
+									is_found = 1
+									print $0
+								}
+							}' | shell_escape)"
+							unset _TMP
+							while :; do
+								connect u "$CONN_URL" && [ -n "$CONN_MOUNTPOINT" ] && break
+								l10n_msg ru 'Нажмите Enter для повтора подключения или введите "q" для отмены' 'Press Enter to reconnect or type "q" to cancel'
+								read -r _TMP || _TMP=q
+								[ "$_TMP" = q ] && break
+							done
+							[ -n "$CONN_MOUNTPOINT" ] && [ "$_TMP" != q ] && wait_user
+							unset USE_CONN_PROTO
+							UI_EVENT=exit
+							;;
+						esac
+						break
+					done
+					[ "$UI_EVENT" = exit ] || break
+				done
+				unset KEY_FILE
+				CONN_IS_OPTS_SPECIFIED=0
+				[ "$UI_EVENT" = exit ] || break
+			done
+			;;
+		unmount_all|force_unmount_all)
+			ui_mode off
+			get_lock "$LOCKDIR"
+			unmount_all $(
+				if [ "$UI_CHOICE" = unmount_all ]; then
+					echo s
+				else
+					echo f
+				fi
+			)
+			release_lock "$LOCKDIR"
+			wait_user
+			;;
+		automount)
+			ui_mode off
+			automount
+			wait_user
+			;;
+		esac
+	done
+	exit 0
+	;;
+esac

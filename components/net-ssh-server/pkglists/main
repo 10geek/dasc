@@ -1,0 +1,3 @@
+openssh-server manual for(openssh-sftp-server)
+krb5-locales auto for_manual(openssh-server) for(libkrb5-3)
+xauth auto for_manual(openssh-server) for(openssh-client openssh-server)

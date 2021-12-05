@@ -1,0 +1,5 @@
+name=Development and testing / Development of graphical interfaces on GTK
+name[ru]=Разработка и тестирование / Разработка графических интерфейсов на GTK
+
+depends/desktop-env
+after/desktop-env

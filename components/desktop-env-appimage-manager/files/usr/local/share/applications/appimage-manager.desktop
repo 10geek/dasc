@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Categories=Utility;
+Name=AppImage Application Manager
+Name[ru]=Менеджер приложений AppImage
+Comment=A tool for installing and removing AppImage applications and integrating them with the system
+Comment[ru]=Инструмент для установки и удаления приложений AppImage и их интеграции с системой
+Icon=AppImage
+Exec=appimage-manager-gui %F
+MimeType=application/x-iso9660-appimage;application/x-appimage;application/vnd.appimage;

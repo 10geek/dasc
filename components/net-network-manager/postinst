@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+[ $CONF_RELOAD_NM_CONF -eq 0 ] || systemctl reload NetworkManager.service || exit

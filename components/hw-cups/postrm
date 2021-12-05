@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+! systemctl -q is-active apparmor.service ||
+	systemctl reload apparmor.service || exit
+! systemctl -q is-active cups.service ||
+	systemctl restart cups.service || exit

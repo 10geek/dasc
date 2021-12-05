@@ -1,0 +1,18 @@
+[Unit]
+Description=Run scripts at system startup from /etc/dasc/events/startup directory
+DefaultDependencies=no
+Requires=sysinit.target
+Before=basic.target
+After=sysinit.target
+Conflicts=shutdown.target umount.target
+
+[Service]
+Type=oneshot
+ExecStart=run-parts --report /etc/dasc/events/startup
+StandardOutput=journal+console
+StandardError=journal+console
+RemainAfterExit=yes
+TimeoutStartSec=0
+
+[Install]
+WantedBy=basic.target

@@ -1,0 +1,47 @@
+name=Hawdware / UPS / Network UPS Tools - client
+name[ru]=Оборудование / ИБП / Network UPS Tools - клиент
+description=Network UPS Tools - a software for working with uninterruptible power supplies (UPS)
+description[ru]=Network UPS Tools - программное обеспечение для работы с источниками бесперебойного питания (ИБП)
+
+# Connecting to the local NUT server should only be performed if it is
+# configured and running
+after/hw-ups-nut-server
+
+conf/mode/type=select
+conf/mode/name=NUT working mode
+conf/mode/name[ru]=Режим работы NUT
+conf/mode/default=standalone
+conf/mode/options/none/description=NUT is not active.
+conf/mode/options/none/description[ru]=NUT не активен.
+conf/mode/options/standalone/description=Local configuration, without the ability to connect to the server from the outside.
+conf/mode/options/standalone/description[ru]=Локальная конфигурация, без возможности соединения с сервером извне.
+conf/mode/options/netserver/description=Network configuration that involves connecting clients to the server over a network.
+conf/mode/options/netserver/description[ru]=Сетевая конфигурация, подразумевающая соединение клиентов с сервером по сети.
+conf/mode/options/netclient/description=Configuration as a client to connect to a remote server.
+conf/mode/options/netclient/description[ru]=Конфигурация в качестве клиента для подключения к удаленному серверу.
+
+conf/server/type=string
+conf/server/name=Server address
+conf/server/name[ru]=Адрес сервера
+conf/server/default=localhost
+conf/server/regexp=[!-~]*
+
+conf/upsname/type=string
+conf/upsname/name=UPS name
+conf/upsname/name[ru]=Имя ИБП
+conf/upsname/default=ups0
+conf/upsname/regexp=[!-~]*
+
+conf/username/type=string
+conf/username/name=User name
+conf/username/name[ru]=Имя пользователя
+conf/username/default=admin
+conf/username/regexp=[!-~]*
+
+conf/password/type=string
+conf/password/name=Password for connecting to the server
+conf/password/name[ru]=Пароль для подключения к серверу
+conf/password/description=If the password is not specified, it will be taken from the server configuration, or randomly generated
+conf/password/description[ru]=Если пароль не указан, то он будет взят из конфигурации сервера, либо сгенерирован случайным образом
+conf/password/hidden=1
+conf/password/regexp=[!-~]*

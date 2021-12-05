@@ -1,0 +1,275 @@
+#!/usr/bin/env sh
+#
+# DASC installation wrapper
+#
+# Version: 1.0.0 (14/11/2021)
+#
+# Copyright (c) 2021 10geek
+#
+# Licensed under the MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+err() {
+	printf %s "$program_name: " >&2
+	if [ $# -gt 2 ]; then
+		if [ $(($# % 2)) -eq 0 ]; then
+			(shift; l10n_msg "$@" >&2)
+		else
+			l10n_msg "$@" >&2
+		fi
+	elif [ $# -eq 2 ]; then
+		printf %s\\n "$2" >&2
+	else
+		printf %s\\n "$1" >&2
+	fi
+	if [ $# -gt 2 ]; then
+		[ $(($# % 2)) -eq 0 ] && exit "$1"
+	elif [ $# -eq 2 ]; then
+		exit "$1"
+	fi
+	return 1
+}
+l10n_msg() {
+	l10n_msg__msg=$1; shift
+	while [ $# -gt 1 ]; do
+		case $1 in
+		$lang)
+			l10n_msg__msg=$2
+			break
+			;;
+		*_*) ;;
+		*)
+			case $lang in
+			${1}_*) l10n_msg__msg=$2;;
+			esac
+			;;
+		esac
+		shift 2
+	done
+	printf %s\\n "$l10n_msg__msg"
+}
+checkutil() {
+	unset -v checkutil__not_found_utils checkutil__util
+	checkutil__silent=0
+	checkutil__any=0
+	while [ $# -ne 0 ]; do
+		checkutil___is_arg_opt=0
+		case $1 in --)
+			shift; break; esac
+		case $1 in -s*|-*s*|-*s)
+			checkutil___is_arg_opt=1; checkutil__silent=1; esac
+		case $1 in -a*|-*a*|-*a)
+			checkutil___is_arg_opt=1; checkutil__any=1; esac
+		case $checkutil___is_arg_opt in 0)
+			break; esac
+		shift
+	done
+	set -- $*
+	while [ $# -ne 0 ]; do
+		if ! checkutil__util_path=$(command -v -- "$1") || [ -z "$checkutil__util_path" ]; then
+			checkutil__not_found_utils=$checkutil__not_found_utils' '$1
+		else case $checkutil__any in 1)
+			checkutil__util=$1
+			return 0
+		esac; fi
+		shift
+	done
+	[ -z "$checkutil__not_found_utils" ] || {
+		checkutil__not_found_utils=${checkutil__not_found_utils# }
+		[ $checkutil__silent -eq 0 ] &&
+			err "\`$(printf %s\\n "$checkutil__not_found_utils" | sed 's/ /'\'', `/g; s/\(.*\), /\1 and /')' is not found in the system; PATH=$PATH"
+		return 1
+	}
+}
+isdirempty() {
+	[ -d "$1" ] || {
+		err "isdirempty(): directory \`$1\" does not exist"
+		return 2
+	}
+	{ isdirempty__buf=$(
+		cd "$1" 2>&3 &&
+		find . -path './*' -prune -exec sh -c 'echo .; kill -INT "$PPID"' \; 2>&3
+	); } 3>&2 2>/dev/null
+	case $? in
+	0) [ -z "$isdirempty__buf" ] && return 0;;
+	*) [ -z "$isdirempty__buf" ] && return 2;;
+	esac
+	return 1
+}
+
+# Usage: request <URL> [<download_path>]
+if checkutil -s curl; then
+	request___util=curl
+elif checkutil wget; then
+	request___util=wget
+else
+	exit 1
+fi
+request() {
+	err "$(l10n_msg 'requesting' ru 'запрос') URL \`$1' ..."
+	case $request___util in
+	curl)
+		eval 'curl --no-progress-meter --max-redirs 20 --connect-timeout 10 --retry 5 --retry-connrefused -fgL'"$(
+			[ $# -gt 1 ] && printf %s 'o "$2"'
+		)"' -- "$1"'
+		;;
+	wget)
+		eval 'wget --no-verbose --tries=5 --timeout=10 --max-redirect=20 --retry-connrefused --retry-on-host-error --no-hsts --no-glob -O '"$(
+			if [ $# -gt 1 ]; then
+				printf %s '"$2"'
+			else
+				printf %s -
+			fi
+		)"' -- "$1"'
+		;;
+	*) false
+	esac || err "request(): unable to request URL \`$1'"
+}
+
+SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
+eval "signal_handler__register() { trap 'EXIT_CODE=\$?; trap '\\'\\'' \$SIGNALS; signal_handler EXIT' EXIT;$(
+	LC_ALL=C awk -- 'BEGIN { for(i = 1; i < ARGC; i++) print "trap \47trap \47\134\47\134\47\47 $SIGNALS; signal_handler " ARGV[i] "; signal_handler__register\47 " ARGV[i] }' $SIGNALS
+);}"
+
+
+lang=$(locale | LC_ALL=C awk '{
+	if(!sub(/^[\t ]*LC_MESSAGES=/, "")) next
+	if(sub(/^"/, "")) {
+		if(!sub(/"$/, "")) next
+	} else if(sub(/^\47/, "")) {
+		if(!sub(/\47$/, "")) next
+	}
+	sub(/@.*/, "")
+	if(tolower($0) !~ /^[A-Za-z]+(_[A-Za-z]+)?\.utf-?8$/) next
+	sub(/\..*/, "")
+	print $0
+	exit
+}')
+
+program_name=${0##*/}
+program_version=1.0.0
+update_id_file=$HOME/.local/share/dasc/data/last-dasc-update-id
+download_dir=$HOME/.local/share/dasc/tmp/dasc-dist
+{ USER_ID=$(id -u) && [ -n "$USER_ID" ]; } ||
+    err 1 'unable to get user ID'
+
+
+usage() {
+	cat <<- EOF
+	Usage: $program_name [<options>] ...
+
+	Options:
+	  -v, --version  Output version information and exit
+	  -h, --help     Display this help and exit
+	EOF
+}
+
+case $1 in
+--help|-h) usage; exit 0;;
+--version|-v) printf %s\\n "$program_version"; exit 0;;
+*)
+	while getopts '' OPT; do case $OPT in
+		?) exit 1;;
+	esac; done
+	;;
+esac
+shift $((OPTIND - 1))
+OPTIND=1
+
+[ $# -eq 0 ] || err_usage 'invalid number of arguments'
+
+checkutil tar || exit 1
+
+case $USER_ID in
+0) ;;
+*) err 1 'root privileges are required' ru 'требуются привилегии root';;
+esac
+
+signal_handler() {
+	case $1 in
+	EXIT)
+		set -- 0
+		rm -rf "$download_dir" || set -- 1
+		set -- "$1" "${download_dir%/*}"
+		while [ ":$2" != ":$HOME/.local/share" ]; do
+			! [ -e "$2" ] || ! isdirempty "$2" || rmdir "$2" || { set -- 1; break; }
+			set -- "$1" "${2%/*}"
+		done
+		[ $EXIT_CODE -eq 0 ] || exit $EXIT_CODE
+		exit $1
+		;;
+	*)
+		exit
+		;;
+	esac
+}
+signal_handler__register
+
+unset -v last_update_id
+! [ -e "$update_id_file" ] ||
+last_update_id=$(cat "$update_id_file") || exit 1
+
+update_id=$(request https://github.com/10geek/dasc/commits/main) || exit 1
+update_id=$(
+	grep -om1 '/commit/[0-9a-f]\{32\}' <<- EOF
+	$update_id
+	EOF
+)
+update_id=${update_id##*/}
+[ -n "$update_id" ] ||
+	err 1 'unable to get update ID' ru 'не удалось получить идентификатор обновления'
+
+[ ":$update_id" = ":$last_update_id" ] &&
+	err 0 'the latest version of DASC is currently in use, update is not required' ru 'на данный момент используется последняя версия DASC, обновление не требуется'
+
+{
+	rm -rf "$download_dir" &&
+	mkdir -p "$download_dir" &&
+	cd "$download_dir"
+} || exit 1
+
+{ pipestatus=$({
+	{ request https://github.com/10geek/dasc/archive/main.tar.gz 3>&- 4>&- || echo 0:$? >&3; } |
+	{ tar -xzf- 3>&- 4>&- || echo 1:$? >&3; }
+} 3>&1 >&4); } 4>&1
+[ -z "$pipestatus" ] ||
+	err 1 'unable to download the distribution' ru 'невозможно загрузить дистрибутив'
+for dir in *; do [ -d "$dir" ] && break; done
+[ -d "$dir" ] || err 1 'unable to determine the name of the unpacked directory'
+cd "$dir" || exit 1
+
+is_conf_installed_initially=0
+[ -e /var/local/lib/debcomp/rollback ] && {
+	is_conf_installed_initially=1
+	touch "$download_dir" /var/local/lib/debcomp/rollback || exit 1
+}
+
+./debcomp -c || exit
+
+[ -e /var/local/lib/debcomp/rollback ] && {
+	[ $is_conf_installed_initially -eq 0 ] ||
+	[ -n "$(find -L /var/local/lib/debcomp/rollback -prune -newer "$download_dir")" ]
+} && {
+	[ -e "${update_id_file%/*}" ] || mkdir -p "${update_id_file%/*}" || exit 1
+	printf %s\\n "$update_id" > "$update_id_file" || exit 1
+}
+
+exit 0

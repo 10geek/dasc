@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+
+keep_state_files=$(lsblk -nS -o NAME | wc -l)
+case $keep_state_files in (''|0) exit 1; esac
+keep_state_files=$((keep_state_files + 10))
+
+[ -e /var/lib/smartmontools ] &&
+find /var/lib/smartmontools \
+	-maxdepth 1 -type f -name '*.state' -printf '%Ts %p\n' |
+	LC_ALL=C sort -nr |
+	LC_ALL=C awk -v keep_state_files="$keep_state_files" \
+	'NR > keep_state_files {
+		sub(/^[^ ]+ /, "")
+		gsub(/\47/, "\47\134\47\47")
+		system("rm -f \47" $0 "\47 \47" $0 "~\47")
+	}'
+true

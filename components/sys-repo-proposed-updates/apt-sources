@@ -1,0 +1,3 @@
+# Updated versions of packages that will be added to the next Debian release
+deb http://deb.debian.org/debian/ bullseye-proposed-updates main
+deb-src http://deb.debian.org/debian/ bullseye-proposed-updates main

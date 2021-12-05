@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Categories=ConsoleOnly;Network;System;
+Name=Teleporter
+Comment=Remote connections manager
+Comment[ru]=Менеджер удалённых подключений
+Icon=teleporter
+Exec=teleporter %u
+Terminal=true

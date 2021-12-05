@@ -1,0 +1,43 @@
+<?awk
+cmd = "xdg-user-dir DESKTOP"
+cmd | getline desktop_path
+close(cmd)
+?>[Base]
+CopyFilenameToClipboard=0
+autoSave=false
+autoSaveFirst=false
+defDir=<?awk print desktop_path ?>
+defFilename=screenshot
+defImgFormat=png
+defScreenshotType=Area
+delay=0
+imageQuality=90
+includeCursor=true
+insDateTimeInFilename=true
+noDecorations=true
+templateDateTime=yyyy-MM-dd_hh:mm:ss
+
+[Display]
+showTrayIcon=false
+timeTrayMessages=5
+trayMessages=1
+zoomAroundMouse=true
+
+[GlobalShortcuts]
+ActiveWindow=
+AreaSelection=
+FullScreen=
+
+[LocalShortcuts]
+Close=Esc
+CopyScreen=Ctrl+C
+Help=F1
+NewScreen=Ctrl+N
+Options=Ctrl+P
+SaveScreen=Ctrl+S
+
+[System]
+AllowCopies=true
+closeInTray=false
+enbaleExternalView=true
+fitInside=true

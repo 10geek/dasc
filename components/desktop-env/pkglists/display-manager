@@ -1,0 +1,6 @@
+lightdm manual
+lightdm-settings manual for_manual(lightdm) for(slick-greeter)
+dconf-gsettings-backend auto for_manual(lightdm) for(gsettings-desktop-schemas dconf-service slick-greeter libgtk-3-common)
+fonts-dejavu-core auto for_manual(lightdm) for(fontconfig-config)
+lightdm-autologin-greeter auto for_manual(lightdm) for(lightdm)
+slick-greeter auto for_manual(lightdm) for(lightdm)

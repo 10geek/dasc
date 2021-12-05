@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Switch user
+Name[ru]=Смена пользователя
+Comment=
+Exec=gsesctl switch-user
+Icon=system-switch-user
+Path=
+Terminal=false
+StartupNotify=false

@@ -1,0 +1,30 @@
+acpi-support manual for(acpi-support-base)
+btrfs-progs manual
+cryptsetup manual
+discover manual
+eject manual
+firmware-linux-free manual
+friendly-recovery manual
+gpm manual for(libgpm2)
+grub-pc manual
+hddtemp manual
+irqbalance manual
+lm-sensors manual for(libsensors-config libsensors5)
+lshw manual
+mdadm manual
+ntfs-3g manual
+pciutils manual for_manual(discover) for(discover-data)
+smartmontools manual
+usb-modeswitch manual for(usb-modeswitch-data)
+usbutils manual
+console-setup auto for_manual(cryptsetup friendly-recovery mdadm grub-pc firmware-linux-free) for(console-setup-linux cryptsetup-initramfs grub-common kbd)
+console-setup-linux auto for_manual(cryptsetup friendly-recovery mdadm grub-pc firmware-linux-free) for(console-setup)
+cryptsetup-initramfs auto for_manual(cryptsetup) for(cryptsetup)
+gettext-base auto for_manual(friendly-recovery grub-pc) for(friendly-recovery)
+initramfs-tools auto for_manual(cryptsetup firmware-linux-free) for(cryptsetup-initramfs firmware-linux-free)
+kbd auto for_manual(cryptsetup friendly-recovery mdadm grub-pc firmware-linux-free) for(console-setup-linux cryptsetup-initramfs util-linux)
+kmod auto for_manual(cryptsetup mdadm acpi-support firmware-linux-free) for(mdadm)
+libglib2.0-data auto for_manual(irqbalance) for(libglib2.0-0)
+liblocale-gettext-perl auto for_manual(friendly-recovery mdadm cryptsetup grub-pc firmware-linux-free) for(adduser cryptsetup)
+os-prober auto for_manual(grub-pc) for(grub-common)
+vbetool auto for_manual(acpi-support) for(acpi-support)

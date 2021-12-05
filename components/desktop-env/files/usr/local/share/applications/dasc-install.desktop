@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=DASC Update
+Name[ru]=Обновление DASC
+Comment=A tool for automatic update of the DASC configuration
+Comment[ru]=Инструмент для автоматического обновления конфигурации DASC
+Categories=System;
+Keywords=Update;Configuration;
+Keywords[ru]=Update;Configuration;Обновить;Конфигурация;
+Icon=system-software-install
+Exec=sh -c 'gsuexec dasc-install; read line'
+Terminal=true

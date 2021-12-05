@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+
+case $PAM_USER in (.|..|*/*|'')
+	printf %s\\n "\`$PAM_USER' is an invalid user name"
+	exit 1
+esac
+
+export \
+	PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+	EVENT_PAM_ABSTRACTION="$1" || exit 1
+
+lc_all_old=$LC_ALL; LC_ALL=C
+for file in "/etc/dasc/events/pam-$1"/*; do
+	LC_ALL=$lc_all_old
+	if [ -f "$file" ] && [ -x "$file" ]; then
+		"$file" || exit
+	fi
+done
+
+exit 0

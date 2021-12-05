@@ -1,0 +1,5 @@
+name=Desktop environment / Utility for getting images from the scanner (simple-scan)
+name[ru]=Окружение рабочего стола / Утилита для получения изображений со сканера (simple-scan)
+
+depends/desktop-env
+after/desktop-env

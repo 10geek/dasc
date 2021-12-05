@@ -1,0 +1,12 @@
+[org/onboard]
+layout='/usr/share/onboard/layouts/Full Keyboard.onboard'
+theme='/var/lib/lightdm/.local/share/onboard/themes/Custom.theme'
+snippets=@as []
+
+schema-version='2.3'
+
+system-theme-associations={'HighContrast': 'HighContrast', 'HighContrastInverse': 'HighContrastInverse', 'LowContrast': 'LowContrast', 'ContrastHighInverse': 'HighContrastInverse', 'Default': ''}
+use-system-defaults=false
+
+[org/onboard/keyboard]
+sticky-key-behavior={'all': 'dblclick'}

@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+{
+	update-mime-database /usr/local/share/mime &&
+	update-desktop-database /usr/local/share/applications
+} || exit

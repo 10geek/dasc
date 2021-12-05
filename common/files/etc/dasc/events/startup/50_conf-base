@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+if systemctl -q is-enabled zramswap.service 2>/dev/null; then
+	printf %s 100 > /proc/sys/vm/swappiness
+else
+	printf %s 10 > /proc/sys/vm/swappiness
+fi

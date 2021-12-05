@@ -1,0 +1,8 @@
+name=Hardware / WiFi, Bluetooth / Broadcom 802.11
+name[ru]=Оборудование / WiFi, Bluetooth / Broadcom 802.11
+description=Chipsets: BCM4311, BCM4312, BCM4313, BCM4321, BCM4322, BCM43142, BCM43224, BCM43225, BCM43227, BCM43228, BCM4331, BCM4360, BCM4352
+
+# Probably the software from the `hw-base` component may be required for the
+# software from this component.
+depends/hw-base
+after/hw-base

@@ -1,0 +1,483 @@
+#!/usr/bin/env sh
+#
+# pipelog - a piped logging utility that rotates a log when it reaches its
+# maximum size.
+#
+# Version: 1.0.0 (04/06/2021)
+#
+# Copyright (c) 2021 10geek
+#
+# Licensed under the MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+err() {
+	if [ $# -gt 1 ]; then
+		printf %s\\n "$program_name: $2" >&2
+	else
+		printf %s\\n "$program_name: $1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+err_usage() {
+	[ $# -ne 0 ] && err "$@"
+	set -- "$(usage | LC_ALL=C awk -- 'BEGIN { ARGC = 1; is_usage = 0 } {
+		if(!is_usage) {
+			sub(/^[\t\n\v\f\r ]+/, "")
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				is_usage = 1
+			} else next
+		}
+		sub(/^[\t\n\v\f\r ]+/, ""); sub(/[\t\n\v\f\r ]+$/, "")
+		if($0 == "") {
+			if(is_usage == 2) exit
+			else next
+		}
+		if(is_usage == 2) {
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				sub(/^[\t\n\v\f\r ]+/, "")
+			}
+			printf("%s", ARGV[1] ": ")
+		}
+		print "usage: " $0
+		is_usage = 2
+	} END { exit exit_code }' "$program_name")"
+	[ -n "$1" ] && err "$1"
+	err "try \`$program_name --help' for more information" >&2
+	exit 1
+}
+has_str_newline() {
+	case $1 in (*'
+'*) return 0
+	esac
+	return 1
+}
+
+usage() {
+	cat <<- EOF
+	Usage:
+	$program_name [<options>] ... <log_file> [<executable>] [<arg>] ...
+	$program_name -r [<options>] ... <log_file>
+
+	$program_name is a piped logging utility that rotates a log when it reaches
+	its maximum size.
+
+	Performance comparison of gzip, bzip2, and xz compression utilities using an
+	average 2M log file:
+	+-------+--------------+--------------+--------------+
+	| Comp. |     gzip     |    bzip2     |      xz      |
+	| level | time    size | time    size | time    size |
+	+-------+--------------+--------------+--------------+
+	|   1   | 0.014s  172K | 0.131s  120K | 0.042s  100K |
+	|   2   | 0.014s  168K | 0.149s  112K | 0.058s  92K  |
+	|   3   | 0.015s  164K | 0.162s  112K | 0.073s  92K  |
+	|   4   | 0.017s  152K | 0.179s  108K | 0.117s  96K  |
+	|   5   | 0.018s  144K | 0.159s  104K | 0.187s  88K  |
+	|   6   | 0.021s  140K | 0.156s  108K | 0.273s  84K  |
+	|   7   | 0.024s  136K | 0.161s  108K | 0.285s  84K  |
+	|   8   | 0.036s  132K | 0.172s  108K | 0.295s  84K  |
+	|   9   | 0.046s  128K | 0.177s  100K | 0.295s  84K  |
+	+-------+--------------+--------------+--------------+
+
+	Options:
+	  -r               Invoke log rotation immediately regardless of its size.
+	  -R               Rotate log file initially before starting to write to it.
+	                   Only effective without -r option.
+	  -s SIZE          Size of the log file at which rotation occurs. SIZE is a
+	                   numeric value which is optionally followed by a unit:
+	                   B (Bytes), K (KiB), M (MiB), or G (GiB).
+	                   Only effective without -r option.
+	                   Default: 2M
+	  -k NUM           Keep only NUM log files (active one + <NUM-1> backups).
+	                   Default: 5
+	  -c COMP[:LEVEL]  Specifies which compression to use for log backups.
+	                   COMP specifies the compression type and can take one of the
+	                   values none, gz, bz2, or xz.
+	                   LEVEL specifies the  compression level and must be a number
+	                   between 0 and 9.
+	                   Default: gz:9
+	  -m MODE          File permissions to apply to newly created log files and
+	                   their backups. MODE is a numeric octal Unix-style file
+	                   permissions (see chmod(1) for more information).
+	                   Default: 644
+	  -t               Prepend lines written to the log with the current date and
+	                   time in the following format: '[%Y-%m-%d %T %Z] '
+	  -T FORMAT        As -t, but using specified FORMAT of the date and time.
+	                   See strftime(3) for more information.
+	                   Default: '[%Y-%m-%d %T %Z] '
+	  -C COMMAND       Command to be executed for log rotation. The passed string
+	                   will be executed as a shell command.
+	                   Only effective without -r option.
+	  -S SIGNALS       List of signals that should not be handled by $program_name
+	                   processes.
+	  -I               Forcefully terminate logger process after <executable>
+	                   process completes. This can be useful in cases where the
+	                   logger process does not receive SIGPIPE and does not
+	                   terminate. This option has an effect only if the
+	                   <executable> argument is specified.
+	  -v, --version    Output version information and exit
+	  -h, --help       Display this help and exit
+	EOF
+}
+
+awk_common_funcs='function err(message, err_exit_code) {
+	print program_name ": " message | "cat 1>&2"
+	close("cat 1>&2")
+	if(err_exit_code != 0 || err_exit_code != "") {
+		exit_code = err_exit_code
+		exit err_exit_code
+	}
+	return 1
+}
+function shell_escape(string, not_wrap_in_quotes) {
+	gsub(/\0/, "", string)
+	gsub(/\47/, "\47\134\47\47", string)
+	if(not_wrap_in_quotes) return string
+	return "\47" string "\47"
+}'
+
+
+program_name=${0##*/}
+program_version=1.0.0
+action=write
+opt_force_interrupt_logger=0
+opt_ignored_signals=
+
+DEFAULT_LOG_ROTATE_INITIALLY=0
+DEFAULT_LOG_SIZE_MAX=2M
+DEFAULT_LOG_FILES_KEEP=5
+DEFAULT_LOG_COMPRESSION=gz:9
+DEFAULT_LOG_MODE=644
+DEFAULT_LOG_PREPEND_TIME=0
+DEFAULT_LOG_TIME_FORMAT='[%Y-%m-%d %T %Z] '
+DEFAULT_LOG_ROTATE_CMD='exec "$EXEC_PATH" -r -k "$LOG_FILES_KEEP" -c "$LOG_COMPRESSION" -m "$LOG_MODE" -- "$LOG_FILE"'
+
+SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
+
+case $1 in
+--help|-h) usage; exit 0;;
+--version|-v) printf %s\\n "$program_version"; exit 0;;
+*)
+	while getopts rRs:k:c:m:tT:CS:I OPT; do case $OPT in
+		r) action=rotate;;
+		R) LOG_ROTATE_INITIALLY=1;;
+		s) LOG_SIZE_MAX=$OPTARG;;
+		k) LOG_FILES_KEEP=$OPTARG;;
+		c) LOG_COMPRESSION=$OPTARG;;
+		m) LOG_MODE=$OPTARG;;
+		t) LOG_PREPEND_TIME=1;;
+		T) LOG_PREPEND_TIME=1; LOG_TIME_FORMAT=$OPTARG;;
+		C) LOG_ROTATE_CMD=$OPTARG;;
+		S) opt_ignored_signals=$OPTARG;;
+		I) opt_force_interrupt_logger=1;;
+		?) exit 1;;
+	esac; done
+	;;
+esac
+shift $((OPTIND - 1))
+OPTIND=1
+
+case $action in
+rotate)
+	[ $# -eq 1 ] || err_usage 'invalid number of arguments'
+	log_rotate() {
+		case $LOG_DIR in (/*) ;; (*)
+			LOG_DIR=./$LOG_DIR
+		esac
+		cd "$LOG_DIR" || return 1
+		[ -e "$LOG_BASENAME" ] || return 0
+		trap '' $SIGNALS || return 1
+
+		i=$((LOG_FILES_KEEP - 1))
+		[ $i -eq 0 ] && i=1
+		while :; do
+			end_of_loop=1
+			for suffix in '' $LOG_BACKUP_SUFFIXES; do
+				[ -e "$LOG_BASENAME.$i$suffix" ] && {
+					end_of_loop=0
+					rm -f -- "$LOG_BASENAME.$i$suffix" || return 1
+				}
+			done
+			[ $end_of_loop -eq 1 ] && break
+			i=$((i + 1))
+		done
+
+		i=$((LOG_FILES_KEEP - 1))
+		while [ $i -gt 1 ]; do
+			j=$((i - 1))
+			for suffix in '' $LOG_BACKUP_SUFFIXES; do
+				[ -e "$LOG_BASENAME.$j$suffix" ] && {
+					mv -f -- "$LOG_BASENAME.$j$suffix" "$LOG_BASENAME.$i$suffix" || return 1
+				}
+			done
+			i=$j
+		done
+
+		{
+			{
+				[ $LOG_FILES_KEEP -eq 1 ] ||
+				case $LOG_COMPRESSION_TYPE in
+				none)
+					: > "$LOG_BASENAME.1" &&
+					chmod "$LOG_MODE" -- "$LOG_BASENAME.1" &&
+					cat -- "$LOG_BASENAME" > "$LOG_BASENAME.1"
+					;;
+				*)
+					: > "$LOG_BASENAME.1.$LOG_COMPRESSION_TYPE" &&
+					chmod "$LOG_MODE" -- "$LOG_BASENAME.1.$LOG_COMPRESSION_TYPE" &&
+					"$LOG_COMPRESSION_UTIL_PATH" \
+						-fc"$LOG_COMPRESSION_LEVEL" -- \
+						"$LOG_BASENAME" > \
+						"$LOG_BASENAME.1.$LOG_COMPRESSION_TYPE"
+				esac
+			} &&
+			: > "$LOG_BASENAME" &&
+			chmod "$LOG_MODE" -- "$LOG_BASENAME"
+		} || return 1
+	}
+	;;
+*)
+	[ $# -eq 0 ] && err_usage 'invalid number of arguments';;
+esac
+
+LOG_FILE=$1
+shift
+
+for include_file in \
+	"/etc/${program_name}rc" \
+	"$HOME/.${program_name}rc"
+do
+	! [ -e "$include_file" ] || . "$include_file" || exit 1
+done
+
+conf_vars='
+LOG_SIZE_MAX
+LOG_FILES_KEEP
+LOG_COMPRESSION
+LOG_MODE
+LOG_PREPEND_TIME
+LOG_TIME_FORMAT
+LOG_ROTATE_CMD
+'
+
+for varname in $conf_vars; do
+	eval "[ -n \"\${$varname+x}\" ] || $varname=\$DEFAULT_$varname"
+done
+
+case $LOG_FILE in (''|.|..|*/|*/.|*/..)
+	err 1 "\`$LOG_FILE' is invalid path to log file"
+esac
+
+LOG_BASENAME=${LOG_FILE##*/}
+has_str_newline "$LOG_BASENAME" &&
+	err 1 "\`$LOG_FILE' is invalid path to log file"
+
+LOG_DIR=${LOG_FILE%/*}
+case $LOG_DIR in
+'')
+	LOG_DIR=/;;
+"$LOG_FILE")
+	LOG_DIR=.;;
+esac
+
+LOG_BACKUP_SUFFIXES='.gz .bz2 .xz'
+
+(
+	log_files_keep=$((LOG_FILES_KEEP + 0)) &&
+	[ ":$log_files_keep" = ":$LOG_FILES_KEEP" ] &&
+	[ $log_files_keep -ne 0 ]
+) 2>/dev/null ||
+	err 1 "\`$LOG_FILES_KEEP' is invalid value of the LOG_FILES_KEEP variable"
+
+LOG_COMPRESSION_TYPE=${LOG_COMPRESSION%%:*}
+LOG_COMPRESSION_LEVEL=${LOG_COMPRESSION#*:}
+[ ":$LOG_COMPRESSION_LEVEL" = ":$LOG_COMPRESSION_TYPE" ] &&
+	LOG_COMPRESSION_LEVEL=
+{
+	case $LOG_COMPRESSION_TYPE in
+	none)
+		[ -z "$LOG_COMPRESSION_LEVEL" ] && LOG_COMPRESSION_LEVEL=1;;
+	gz)
+		LOG_COMPRESSION_UTIL=gzip;;
+	bz2)
+		LOG_COMPRESSION_UTIL=bzip2;;
+	xz)
+		LOG_COMPRESSION_UTIL=xz;;
+	*) false
+	esac &&
+	case $LOG_COMPRESSION_LEVEL in
+	'') LOG_COMPRESSION_LEVEL=9;;
+	1|2|3|4|5|6|7|8|9) ;;
+	*) false
+	esac
+} ||
+	err 1 "\`$LOG_COMPRESSION' is invalid value of the LOG_COMPRESSION variable"
+[ ":$LOG_COMPRESSION_TYPE" = :none ] || {
+	LOG_COMPRESSION_UTIL_PATH=$(command -v "$LOG_COMPRESSION_UTIL") &&
+	[ -n "$LOG_COMPRESSION_UTIL_PATH" ]
+} ||
+	err 1 "utility \`$LOG_COMPRESSION_UTIL' is not found in the system; PATH=$PATH"
+
+case $LOG_MODE in ([0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;; (*)
+	err 1 "\`$LOG_MODE' is invalid value of the LOG_MODE variable"
+esac
+
+
+case $action in
+rotate)
+	log_rotate
+	exit
+esac
+
+
+export LOG_FILE $conf_vars || exit
+
+case $LOG_ROTATE_INITIALLY in (''|0) ;; (*)
+	(EXEC_PATH=$0; export EXEC_PATH; eval " $LOG_ROTATE_CMD") ||
+		err 1 "log rotation command \`$LOG_ROTATE_CMD' exited with code $?"
+esac
+
+if [ -e "$LOG_FILE" ]; then
+	{ [ -f "$LOG_FILE" ] && ! [ -h "$LOG_FILE" ]; } ||
+		err 1 "\`$LOG_FILE' is not a file"
+	log_size=$(wc -c -- "$LOG_FILE")
+else
+	log_size=0
+	: > "$LOG_FILE"
+fi || exit 1
+chmod "$LOG_MODE" -- "$LOG_FILE" || exit 1
+
+
+awk_program='function human2bytes(num) {
+	if(sub(/[Kk]$/, "", num)) num *= 1024
+	else if(sub(/[Mm]$/, "", num)) num *= 1048576
+	else if(sub(/[Gg]$/, "", num)) num *= 1073741824
+	else num += 0
+	return int(num)
+}
+BEGIN {
+	argc = ARGC; ARGC = 1
+	program_name = ARGV[1]
+	sub(/.*\57/, "", program_name)
+	log_opened = 0
+
+	log_file = ENVIRON["LOG_FILE"]
+
+	log_size = ENVIRON["LOG_SIZE"]
+	if(match(log_size, /[0-9]+/))
+		log_size = substr(log_size, RSTART, RLENGTH)
+	log_size += 0
+
+	log_size_max = ENVIRON["LOG_SIZE_MAX"]
+	if(log_size_max !~ /^[1-9][0-9]*[BbKkMmGg]?$/)
+		err("`" log_size_max "\47 is invalid value of the LOG_SIZE_MAX variable", 1)
+	log_size_max = human2bytes(log_size_max)
+
+	log_prepend_time = ENVIRON["LOG_PREPEND_TIME"] + 0
+	log_time_format = ENVIRON["LOG_TIME_FORMAT"]
+} {
+	if(log_prepend_time)
+		$0 = strftime(log_time_format, systime()) $0
+	line_len = length($0) + 1
+	if(line_len > log_size_max) {
+		$0 = log_size_max == 1 ? "" : substr($0, 1, log_size_max - 1)
+		line_len = log_size_max
+	}
+	log_size += line_len
+	if(log_size > log_size_max) {
+		if(log_opened && close(log_file))
+			err("error while closing log file `" log_file "\47" (ERRNO == "" ? "" : ": " ERRNO), 1)
+		log_opened = 0
+		retval = system(ENVIRON["LOG_ROTATE_CMD"])
+		if(retval)
+			err("log rotation command `" ENVIRON["LOG_ROTATE_CMD"] "\47 exited with code " retval, 1)
+		log_size = line_len
+	}
+	log_opened = 1
+	print $0 >> log_file
+	if(fflush(log_file)) exit 1
+}'
+
+if [ -n "$opt_ignored_signals" ]; then
+	prevent_ignored_signals_handling() {
+		[ -n "$opt_ignored_signals" ] || return 0
+		[ $# -eq 0 ] && set -- ' '
+		trap "$1" $opt_ignored_signals || exit
+	}
+else
+	prevent_ignored_signals_handling() { :; }
+fi
+exec_logger() {
+	prevent_ignored_signals_handling ''
+	LC_ALL=C \
+	LOG_SIZE=$log_size \
+	EXEC_PATH=$0 \
+	exec gawk -f /dev/fd/3 -- "$0" 3<<- EOF
+	$awk_common_funcs
+	$awk_program
+	EOF
+}
+
+[ $# -eq 0 ] && exec_logger
+
+prevent_ignored_signals_handling
+exec 4>&1
+exit $(
+	prevent_ignored_signals_handling
+	exec 3>&1
+	{
+		prevent_ignored_signals_handling
+		unset -v LOG_FILE $conf_vars
+		"$@" 2>&1
+		echo $? >&3
+		[ $opt_force_interrupt_logger -eq 1 ] && {
+			pids=$$
+			while :; do
+				pids=$(
+					ps -Ao ppid,pid,comm | LC_ALL=C awk -- 'BEGIN {
+						signal = "INT"
+						split(ARGV[1], ignored_signals)
+						for(i in ignored_signals) {
+							if(ignored_signals[i] == "INT") {
+								signal = "KILL"
+								break
+							}
+						}
+						for(i = 2; i < ARGC; i++) ppids[ARGV[i]] = ""
+						ARGC = 1; exit_code = 0
+					}
+					$1 in ppids {
+						if($3 == "gawk") {
+							system("kill -" signal " " $2)
+							exit_code = 1; exit
+						}
+						pids = pids " " $2
+					} END {
+						if(exit_code) exit exit_code
+						print pids
+					}' "$opt_ignored_signals" $pids
+				) || break
+			done
+		}
+	} | exec_logger >&4
+)

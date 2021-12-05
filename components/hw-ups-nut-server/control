@@ -1,0 +1,17 @@
+name=Hawdware / UPS / Network UPS Tools - server
+name[ru]=Оборудование / ИБП / Network UPS Tools - сервер
+description=Network UPS Tools - a software for working with uninterruptible power supplies (UPS)
+description[ru]=Network UPS Tools - программное обеспечение для работы с источниками бесперебойного питания (ИБП)
+
+# For protection of the server from power outages, and also because the
+# `hw-ups-nut-client` package contains files common to the `hw-ups-nut-server` and
+# `hw-ups-nut-client`.
+depends/hw-ups-nut-client
+
+conf/password/type=string
+conf/password/name=Password of the "admin" user
+conf/password/name[ru]=Пароль пользователя "admin"
+conf/password/description=If the password is not specified, it will be randomly generated
+conf/password/description[ru]=Если пароль не указан, то он будет сгенерирован случайным образом
+conf/password/hidden=1
+conf/password/regexp=[!-~]*

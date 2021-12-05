@@ -1,0 +1,278 @@
+#!/usr/bin/awk -f
+function shell_getline(cmd) {
+	shell_getline__cmd = cmd
+	return (cmd | getline) > 0
+}
+function shell_getline_next() {
+	return (shell_getline__cmd | getline) > 0
+}
+function shell_close() {
+	close(shell_getline__cmd)
+	shell_getline__cmd = ""
+}
+
+function table_select_col(col) {
+	table["sel_col"] = col
+}
+function table_select_smallest_col(    i, col) {
+	col = 1
+	for(i = 2; i <= table_col_count; i++) {
+		if(table[i, 0] < table[col, 0]) col = i
+	}
+	table_select_col(col)
+}
+function table_add(content, col) {
+	if(!col) {
+		if(!table["sel_col"]) table["sel_col"] = 1
+		col = table["sel_col"]
+	}
+	table[col, ++table[col, 0]] = content
+}
+function table_output(    table_cols_xpos, i, j, is_row_exist) {
+	for(i = 1; i <= table_col_count; i++) {
+		table_cols_xpos[i] = border_inner_margin + (table_col_width + table_cell_margin) * (i - 1)
+	}
+	i = 1
+	while(1) {
+		is_row_exist = 0
+		for(j = 1; j <= table_col_count; j++) {
+			if(!(j SUBSEP i in table)) { continue }
+			if(!is_row_exist) {
+				is_row_exist = 1
+				if(i != 1) printf("${voffset -" int(font_size / 2) "}")
+			}
+			printf("${goto %s}%s", table_cols_xpos[j], table[j, i])
+		}
+		if(!is_row_exist) break
+		print ""
+		i++
+	}
+	split("", table, ":")
+}
+function table_add_sensor_graph(chip, name, units, select_smallest_col) {
+	if(system("sensors -u " chip " 2>/dev/null | LC_ALL=C awk 'BEGIN { exit_code = 1 } $0 == \"" name ":\" { while((getline) > 0) { if($0 !~ /^[\t ]/) exit; if($1 ~ /_input:$/) { exit_code = 0; exit } } } END { exit exit_code }'")) return 0
+	if(select_smallest_col) table_select_smallest_col()
+	table_add("Sensor [" name "]: ${execi 1 sensors -u " chip " | LC_ALL=C awk '$0 == \"" name ":\" { while((getline) > 0) { if($0 !~ /^[\t ]/) exit; if($1 ~ /_input:$/) print substr($2, 1, index($2, \".\") + 1) } }'} " units)
+	table_add("${execigraph 1 \"sensors -u " chip " | LC_ALL=C awk '$0 == \"" name ":\" { while((getline) > 0) { if($0 !~ /^[\t ]/) exit; if($1 ~ /_input:$/) print substr($2, 1, index($2, \".\") - 1) } }'\"}")
+	return 1
+}
+
+function text_table_add(width, title, content) {
+	text_table[0]++
+	text_table[text_table[0], "w"] = width * font_width
+	text_table[text_table[0], "t"] = title
+	text_table[text_table[0], "c"] = content
+}
+function text_table_output(    offset) {
+	if(!text_table[0]) return
+	offset = border_inner_margin
+	printf("${color CFC}")
+	for(i = 1; i <= text_table[0]; i++) {
+		if(i != 1) printf("${goto %s}\342\224\202 ", offset)
+		printf("%s", text_table[i, "t"])
+		offset += text_table[i, "w"]
+	}
+	print "${color}"
+	offset = border_inner_margin
+	for(i = 1; i <= text_table[0]; i++) {
+		if(i != 1) printf("${goto %s}\342\224\202 ", offset)
+		printf("%s", text_table[i, "c"])
+		offset += text_table[i, "w"]
+	}
+	print ""
+	split("", text_table, ":")
+}
+
+function sec_to_hms(sec_total,    hms) {
+	sec = sec_total % 60
+	min_total = (sec_total - sec) / 60
+	min = min_total % 60
+	hour_total = (min_total - min) / 60
+
+	hms = sec "s"
+	if(min) hms = min "m " hms
+	if(hour_total) hms = hour_total "h " hms
+	return hms
+}
+
+
+BEGIN {
+
+while(shell_getline("xrandr")) {
+	if($2 != "connected") { continue }
+	$1 = ""
+	if(!match($0, /[1-9][0-9]*x[1-9][0-9]*/)) { continue }
+	result = substr($0, RSTART, RLENGTH)
+	break
+}
+shell_close()
+pos = index(result, "x")
+window_width = int(substr(result, 1, pos - 1))
+window_height = int(substr(result, pos + 1))
+
+
+update_interval = 1
+border_inner_margin = 10
+table_cell_margin = 10
+window_inner_width = window_width - border_inner_margin * 2
+window_inner_height = window_height - border_inner_margin * 2
+table_col_count = 4
+table_col_width = int((window_inner_width - table_cell_margin * (table_col_count - 1)) / table_col_count)
+font_size = 9
+font_width = 7
+color1 = "3FFF3F"
+color2 = "C00000"
+mbox_path = ENVIRON["MAIL"]
+if(mbox_path == "") {
+	shell_getline("id -nu")
+	shell_close()
+	mbox_path = "/var/mail/" $0
+}
+
+
+print "conky.config = {"
+
+# System
+print "background = false,"
+print "disable_auto_reload = true,"
+print "out_to_console = false,"
+print "out_to_stderr = false,"
+print "override_utf8_locale = true,"
+
+# Window
+print "alignment = 'middle_right',"
+print "border_width = 0,"
+print "border_inner_margin = " border_inner_margin ","
+print "border_outer_margin = 0,"
+print "draw_borders = false,"
+print "double_buffer = true,"
+print "gap_x = 0,"
+print "gap_y = 0,"
+print "minimum_width = " window_width ","
+print "minimum_height = " window_height ","
+print "own_window = true,"
+print "own_window_argb_value = 180,"
+print "own_window_argb_visual = true,"
+# print "own_window_class = 'conky',"
+# print "own_window_colour = '000008',"
+# print "own_window_hints = 'undecorated,above,sticky,skip_taskbar,skip_pager',"
+print "own_window_title = 'Dashboard',"
+print "own_window_transparent = false,"
+print "own_window_type = 'normal',"
+print "stippled_borders = 0,"
+
+# Monitoring
+print "cpu_avg_samples = 2,"
+print "net_avg_samples = 2,"
+print "no_buffers = true,"
+print "update_interval = " update_interval ","
+print "show_graph_scale = true,"
+
+# Colors
+print "default_color = '" color1 "',"
+
+# Font
+print "default_outline_color = 'black',"
+print "default_shade_color = 'black',"
+print "draw_outline = false,"
+print "draw_shades = false,"
+print "use_xft = true,"
+print "xftalpha = 1,"
+print "font = 'Monospace:size=" font_size "',"
+print "uppercase = false,"
+
+# Bars
+print "default_bar_width = " table_col_width ","
+print "default_bar_height = 8,"
+
+# Graphs
+print "default_graph_width = " table_col_width ","
+print "default_graph_height = 50,"
+print "draw_graph_borders = true,"
+print "show_graph_range = false,"
+
+# Miscellaneous
+print "use_spacer = 'right',"
+
+print "}"
+
+
+print "conky.text = [["
+
+text_table_add(21, "Date and time", "${time %a, %d %b, %T}")
+text_table_add(16, "Uptime", "${uptime}")
+text_table_add(12, "Processes", "${processes}")
+text_table_add(20, "Running processes", "${running_processes}")
+text_table_add(18, "Running threads", "${running_threads}")
+text_table_add(12, "New mails", "${new_mails " mbox_path "}")
+text_table_add(0, "Graph range", sec_to_hms(int(table_col_width * update_interval)))
+text_table_output()
+
+print "${voffset -" font_size "}${goto 0}${hr}"
+
+table_select_col(1)
+while(shell_getline("find /sys/class/net -path '/*/*/*/*' -prune | LC_ALL=C awk '{ print length, $0 }' | LC_ALL=C sort -n")) {
+	sub(/.*\//, "")
+	if($0 ~ /^(lo|vnet[0-9]+)$/) { continue }
+	table_add("Network [" $0 "]: \342\226\262 ${upspeed " $0 "} \342\226\274 ${downspeed " $0 "} \342\226\262 ${totalup " $0 "}  \342\226\274 ${totaldown " $0 "}")
+	table_add("${upspeedgraph " $0 " " color1 " " color2 " -t}")
+	table_add("", table["sel_col"] + 1)
+	table_add("${downspeedgraph " $0 " " color1 " " color2 " -t}", table["sel_col"] + 1)
+}
+shell_close()
+
+table_select_col(3)
+shell_getline("LC_ALL=C df -P")
+while(shell_getline_next()) {
+	if(substr($1, 1, 1) != "/") { continue }
+	table_add("Disk [" $1 "]: \342\226\262 ${diskio_read " $1 "} \342\226\274 ${diskio_write " $1 "}  ${fs_used " $6 "} (${fs_used_perc " $6 "}%) / ${fs_size " $6 "} ${fs_bar 8,50 " $6 "}")
+	table_add("${diskiograph_read " $1 " " color1 " " color2 " -t}")
+	table_add("", table["sel_col"] + 1)
+	table_add("${diskiograph_write " $1 " " color1 " " color2 " -t}", table["sel_col"] + 1)
+}
+shell_close()
+
+table_select_smallest_col()
+table_add("CPU: ${cpu}%")
+table_add("${cpugraph " color1 " " color2 " -t}")
+
+# shell_getline("nproc")
+# shell_close()
+# for(i = 1; i <= $0; i++) {
+# 	table_add("CPU: ${cpu cpu" i "}% ${freq} MHz")
+# 	table_add("${cpugraph cpu" i " " color1 " " color2 " -t}")
+# }
+
+table_select_smallest_col()
+table_add("RAM: ${mem} (${memperc}%) / ${memmax}")
+table_add("${memgraph " color1 " " color2 " -t}")
+
+# table_add("Swap: ${swap}(${swapperc}%) / ${swapmax}")
+# table_add("${execigraph 2 \"LC_ALL=C awk 'NR > 1 { total += $3; used += $4 } END { ORS = \"\"; print int(used / (total / 100)) }' /proc/swaps\"}")
+
+shell_getline("cat /proc/swaps")
+while(shell_getline_next()) {
+	table_add("Swap [" $1 "]: ${execi 2 LC_ALL=C /sbin/swapon --show --noheadings --raw | LC_ALL=C awk '$1 == \"" $1 "\" { print $4 \" / \" $3; exit }'}")
+	table_add("${execigraph 2 \"LC_ALL=C awk 'NR > 1 && $1 == \"" $1 "\" { print int($4 / ($3 / 100)); exit }' /proc/swaps\"}")
+}
+shell_close()
+
+# table_select_smallest_col()
+# table_add("Disk IO (read): ${diskio_read}")
+# table_add("${diskiograph_read " color1 " " color2 " -t}")
+# table_add("Disk IO (write): ${diskio_write}")
+# table_add("${diskiograph_write " color1 " " color2 " -t}")
+
+table_add_sensor_graph("coretemp-isa-0000", "Physical id 0", "\302\260C", 1)
+
+if(!system("[ -f /sys/class/thermal/thermal_zone0/temp ]")) {
+	table_select_smallest_col()
+	table_add("Sensor [thermal_zone0]: ${execi 1 LC_ALL=C awk '{ printf(\"%.1f\", $0 / 1000) }' /sys/class/thermal/thermal_zone0/temp} \302\260C")
+	table_add("${execigraph 1 \"LC_ALL=C awk '{ print int($0 / 1000) }' /sys/class/thermal/thermal_zone0/temp\"}")
+}
+
+table_output()
+
+print "]]"
+
+}

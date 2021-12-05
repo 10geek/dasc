@@ -1,0 +1,6 @@
+name=Network / Managing remote connections and mounting remote filesystems (teleporter)
+name[ru]=Сеть / Управление удалёнными подключениями и монтирование удалённых файловых систем (teleporter)
+
+# Probably the software from the `net-base` component may be required for the
+# software from this component.
+depends/net-base

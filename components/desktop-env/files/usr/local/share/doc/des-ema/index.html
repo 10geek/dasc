@@ -1,0 +1,1492 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Desktop file specification extension | Nautilus-Actions.Org</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<style type="text/css" media="all">
+@import url("css/aggregator.css");
+</style>
+<style type="text/css" media="all">
+@import url("css/node.css");
+</style>
+<style type="text/css" media="all">
+@import url("css/poll.css");
+</style>
+<style type="text/css" media="all">
+@import url("css/defaults.css");
+</style>
+<style type="text/css" media="all">
+@import url("css/system.css");
+</style>
+<style type="text/css" media="all">
+@import url("css/user.css");
+</style>
+<style type="text/css" media="all">
+@import url("css/project.css");
+</style>
+<style type="text/css" media="all">
+@import url("css/project_release.css");
+</style>
+<style type="text/css" media="all">
+@import url("css/comment.css");
+</style>
+<style type="text/css" media="all">
+@import url("css/style.css");
+</style>
+<style type="text/css" media="all">
+@import url("css/menuExpandable4.css");
+</style>
+</head>
+
+<body bgcolor="#ffffff">
+<div id="main">
+<h1 class="title">Desktop file specification extension</h1>
+<!-- begin content -->
+<div class="node">
+
+
+<span class="submitted">Submitted by <em>peio</em> on <em>Mon, 2009-12-07 23:00</em>.</span>
+
+<div class="content"><br>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2>Introduction</h2>
+
+<p>
+This is <acronym>DES-EMA</acronym>, the Extension for Menus and Actions of the <a href="http://www.freedesktop.org/" target="_blank">freedesktop.org</a> <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">Desktop Entry Specification</a> (DES).
+</p>
+<p>
+This specification aims to define a common format for user actions, allowing creators to share their actions between compliant desktop environments. This also covers how actions may be organized in a hierarchy of menus, submenus, and so on. It explains how actions and menus should be described in <code><font size="+1">.desktop</font></code> files, how and where these <code><font size="+1">.desktop</font></code> files are to be searched for, and how the final hierarchy should be built.
+</p>
+<p>
+This specification doesn't explicitly handle the « level-zero » case (but see the <a href="#level-zero">appendix A</a> for a proposition about that).
+</p>
+<p>
+Such an extension, targeting action items in file manager context menu, has been widely discussed in <a href="https://mail.kde.org/mailman/listinfo/kde-devel" target="_blank">KDE</a>, <a href="http://lists.freedesktop.org/mailman/listinfo/xdg" target="_blank">freedesktop.org</a> and <a href="http://foo-projects.org/mailman/listinfo/thunar-dev" target="_blank">Thunar</a> lists.
+</p>
+<p>
+This is version 0.15 of our draft, updated on 2010, November 23rd (see <a href="#changelog">ChangeLog</a> below).
+</p>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2>Desktop file</h2>
+
+<h4>Desktop file format</h4>
+
+<p>
+This specification relies on the common syntax defined in <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">DES</a>. We are just reminding here the reader of some main points.
+</p>
+<ul>
+<li>Files are UTF-8 encoded.</li>
+<li>All keys and values are case sensitive.</li>
+<li>The <code><font size="+1">[Desktop Entry]</font></code> group must be the first group of the file.</li>
+<li>Boolean values must be "<code><font size="+1">true</font></code>" or "<code><font size="+1">false</font></code>".</li>
+<li>Strings, in strings lists, are semicolon-separated; the list itself ends with a semicolon.</li>
+</ul>
+<p>
+Please note that, in all tables below, <code><font size="+1">Req=YES</font></code> just means that the value is required to define a valid action (resp. menu, resp. profile). A management UI is free to handle invalid actions (resp. menus, resp. profiles), and in fact that might even be needed in order to be able to fix invalid items, and make them valid...
+</p>
+
+<h4>Desktop file identifiant</h4>
+
+<p>
+In the rest of this specification, when a desktop file needs to be identified, we are using the basename of the file, without the extension, calling this a <i>desktop_file_id</i>.
+</p>
+
+<h4 id="searchpath">Desktop files search path</h4>
+
+<p>
+<code><font size="+1">.desktop</font></code> files are searched for in "<code><font size="+1">XDG_DATA_DIRS/file-manager/actions</font></code>" directories, as defined in <a href="http://www.freedesktop.org/" target="_blank">freedesktop.org</a> <a href="http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html" target="_blank">XDG specifications</a>.
+</p>
+<p>
+When building the whole hierarchy of the menus and actions to be displayed in the file manager context menu, the implementation should ensure that all used <i>desktop_file_id</i>s are unique. In the case where two <code><font size="+1">.desktop</font></code> files have the same <i>desktop_file_id</i>, then the first found should take precedence.
+</p>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2>Managed objects</h2>
+
+<h4 id="managed-actions">Actions and profiles</h4>
+
+<p>
+This specification essentially defines how actions are to be described in <code><font size="+1">.desktop</font></code> files in order to be displayed in a file manager context menu, and available as selectable items to be executed by the user.
+</p>
+<p>
+An action might be defined as a group of several elements:
+</p><ul>
+<li>the displayable part: label, tooltip, icon</li>
+<li>conditions which have to be met in order the item be actually displayed in the context menu; these conditions are checked against the current file manager selection; these might be mimetypes, scheme, etc.</li>
+<li>the command to be executed, and its parameters.</li>
+</ul>
+<p></p>
+<p>
+As a user might want have the very same action (same label, same icon, and so on) execute a different command depending of the current environment at runtime, we define that an action is built on one to several profiles, where each profile is defined by:
+</p><ul>
+<li>conditions which have to be met in order the item be actually displayed in the context menu; these conditions are checked against the current file manager selection; these might be mimetypes, scheme, etc.</li>
+<li>the command to be executed, and its parameters.</li>
+</ul>
+<p></p>
+
+<h4 id="managed-menus">Menus</h4>
+
+<p>
+This specification also defines how these actions may be gathered and ordered in menus, and submenus, and so on.
+</p>
+<p>
+A menu is defined by:
+</p><ul>
+<li>its displayable part: label, tooltip, icon</li>
+<li>conditions which are to be met in order the menu, and recursively all of its subitems, be actuelly displayed in the file manager context menu</li>
+<li>the ordered list of the items in the menu.</li>
+</ul>
+<p></p>
+
+<h4>Conditions</h4>
+
+<p>
+As we are dealing with three level of objects (menus, actions, profiles), it appears that whether a condition must be defined at one of these levels is rather an arbitrary decision.
+</p>
+<p>
+We so say that conditions may appear in any of these levels:
+</p>
+<ul>
+<li>When a condition appears in a menu definition, the result of its evaluation recursively applies to all included items. If the condition is not met, then neither the menu nor any of its subitems will be displayed.</li>
+<li>When a condition appears in an action definition, the result of its evaluation applies to all its profiles. If the condition is not met, then the action will not be candidate; the profiles will even not be considered.</li>
+</ul>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2>Action definition</h2>
+
+<p>
+An action must be entirely defined in one <code><font size="+1">.desktop</font></code> file. The action is identified by the <i>desktop_file_id</i> in which it is defined.
+</p>
+<p>
+Only valid actions are displayed in the file manager context menu.
+</p>
+<p>
+To be valid, an action must have a non-empty name, and at least one profile must be found valid at runtime.
+</p>
+<p>
+As stated <a href="#managed-actions">above</a>, an action may embed its own conditions. If these conditions are not met at runtime, then profiles are not even considered.
+</p>
+<p>
+An action is primarily defined in the <code><font size="+1">[Desktop Entry]</font></code> group, which has following keys:
+</p>
+
+<table border="1">
+<tbody><tr valign="top">
+<td><b>Key</b></td>
+<td><b>Description</b></td>
+<td nowrap="nowrap"><b>Value type</b></td>
+<td><b>Req ?</b></td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Type</font></code></td>
+<td>This define this <code><font size="+1">.desktop</font></code> file as an Action definition.<br>
+Defaults to "<code><font size="+1">Action</font></code>".</td>
+<td>string</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Name</font></code></td>
+<td>The label of the action, as it should appear in the context menu.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">Name</font></code> value, and will be substituted at runtime.</td>
+<td>localestring</td>
+<td>YES</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Tooltip</font></code></td>
+<td>The tooltip associated with the item in the context menu.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">Tooltip</font></code> value, and will be substituted at runtime.<br>
+Defaults to empty.
+</td>
+<td>localestring</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Icon</font></code></td>
+<td>The name of a themed icon, or the path to an icon.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">Icon</font></code> value, and will be substituted at runtime.<br>
+Defaults to empty.</td>
+<td>localestring</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Description</font></code></td>
+<td>A free description of the action, which may be used in the management UI, in a Web page, and so on.<br>
+Defaults to empty.</td>
+<td>localestring</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">SuggestedShortcut</font></code></td>
+<td>A shortcut suggested for the action.<br>
+Please note that this might be only a suggestion as the shortcut may be already reserved for another use. Implementation should not override an already existing shortcut to define this one.<br>
+The format may look like "&lt;Control&gt;a" or "&lt;Shift&gt;&lt;Alt&gt;F1".<br>
+Defaults to empty.</td>
+<td>string</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Enabled</font></code></td>
+<td>Whether the item is candidate to be displayed in the context menu.<br>
+A user might define many actions or menus, and choose to only enable some of them from time to time.<br>
+Defaults to "<code><font size="+1">true</font></code>".</td>
+<td>boolean</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Hidden</font></code></td>
+<td>From <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">DES</a>: <code><font size="+1">Hidden</font></code> should have been called <code><font size="+1">Deleted</font></code>. It means the user deleted (at his level) something that was present (at an upper level, e.g. in the system dirs). It's strictly equivalent to the <code><font size="+1">.desktop</font></code> file not existing at all, as far as that user is concerned. This can also be used to "uninstall" existing files (e.g. due to a renaming) - by letting make install install a file with <code><font size="+1">Hidden=true</font></code> in it.<br>
+Defaults to "<code><font size="+1">false</font></code>".</td>
+<td>boolean</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">TargetContext</font></code></td>
+<td>Whether the item targets the file manager context menu.<br>
+This means that the action will be candidate if defined conditions met the current selection.<br>
+Defaults to "<code><font size="+1">true</font></code>".</td>
+<td>boolean</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">TargetLocation</font></code></td>
+<td>Whether the item targets a location menu, if the file manager supports this.<br>
+This means that the action will be candidate if defined conditions met the current location.<br>
+Defaults to "<code><font size="+1">false</font></code>".</td>
+<td>boolean</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">TargetToolbar</font></code></td>
+<td>Whether the item targets the toolbar, if the file manager supports this.<br>
+Note that, in order to keep a nice and stable UI, the file manager may reserve toolbar actions to those only targeting the current folder.<br>
+Defaults to "<code><font size="+1">false</font></code>".</td>
+<td>boolean</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">ToolbarLabel</font></code></td>
+<td>The label to be displayed in the toolbar, if it is not the same that those displayed in context menu.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">ToolbarLabel</font></code> value, and will be substituted at runtime.<br>
+Defaults to <code><font size="+1">Name</font></code> value.</td>
+<td>localestring</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td nowrap="nowrap"><code><font size="+1">Profiles</font></code></td>
+<td><p>The ordered list of the profiles attached to this action.<br>
+Each element of this strings list may be:
+</p><ul>
+<li>a <i>profile_id</i>, <i>i.e.</i> the id of a profile, as an ASCII string</li>
+<li>a command to be executed, if the string is enclosed between square brackets ('<code><font size="+1">[</font></code>'...'<code><font size="+1">]</font></code>').</li>
+</ul>
+
+So, "<code><font size="+1">Profiles</font></code>" key has a dynamic value: if an element of the string list is enclosed between square brackets ('<code><font size="+1">[</font></code>'...'<code><font size="+1">]</font></code>'), it is considered as a command, optionally with <a href="#parameters">parameters</a> and arguments, and so will be subject to an evaluation at runtime. If the standard output of the command is a valid strings list, then it is substituted to the bracketed element. It the command doesn't exist or cannot be executed, the bracketed element is just ignored.
+<p></p>
+<p>
+After reading, and maybe evaluation of dynamic elements, profiles identified by the "<code><font size="+1">Profiles</font></code>" value, but not found in this <code><font size="+1">.desktop</font></code> file, are just ignored.
+</p>
+<p>
+It is up to the implementation to decide whether profiles found in this <code><font size="+1">.desktop</font></code> file, but not identified in this list, should or not be attached to the action.<br>
+It could be for example an acceptable fallback to append these « orphan » profiles at the end of the list of profiles.<br>
+Another choice might also be:
+</p>
+<ul>
+<li>at runtime, only attach to the action profiles which are listed in this "<code><font size="+1">Profiles</font></code>" key</li>
+<li>while a management UI may load all profiles found in the <code><font size="+1">.desktop</font></code> file.</li>
+</ul>
+</td>
+<td>strings list</td>
+<td>YES</td>
+</tr>
+
+</tbody></table>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2>Profile definition</h2>
+
+<p>
+Profile is identified by its <i>profile_id</i>, as an ASCII string.
+</p>
+<p>
+Each profile defined in the "<code><font size="+1">Profiles</font></code>" key, whether statically by its <i>profile_id</i> identifiant, or as the result of an evaluated command, must be defined in a <code><font size="+1">[X-Action-Profile <i>profile_id</i>]</font></code> group.
+</p>
+<p>
+When several profiles are defined for an action, only the first valid profile whose conditions are met at runtime is selected to be made available in the context menu.
+</p>
+<p>
+Defining several profiles let so the user have an ordered OR-ed set of conditions, i.e. have one action be available if one set of conditions is met, OR this same action, though most probably with a slightly different command, be available if another set of conditions is met, and so on.
+</p>
+<p>
+In order to be valid, a profile must at least have an executable command.
+</p>
+
+<table border="1">
+<tbody><tr valign="top">
+<td><b>Key</b></td>
+<td><b>Description</b></td>
+<td nowrap="nowrap"><b>Value type</b></td>
+<td><b>Req ?</b></td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Name</font></code></td>
+<td>The name of the profile; this name is not displayed in the context menu, and should just be thought as a convenience for the management UI. It may also be seen as a good place for a description of what the profile exactly does.<br>
+Defaults to empty.</td>
+<td>localestring</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Exec</font></code></td>
+<td>From <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">DES</a>: command to execute, possibly with arguments<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">Exec</font></code> value, and will be substituted at runtime.
+</td>
+<td>string</td>
+<td>YES</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Path</font></code></td>
+<td>The working directory the program should be started in.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">Path</font></code> value, and will be substituted at runtime.<br>
+Defaults to base directory of the current selection, which happens to be the value of "<code><font size="+1">%d</font></code>" parameter.
+</td>
+<td>string</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">ExecutionMode</font></code></td>
+<td>Execution mode of the program.<br>
+This may be choosen between following values:
+<ul>
+<li><code><font size="+1">Normal</font></code>: Starts as a standard graphical user interface</li>
+<li><code><font size="+1">Terminal</font></code>: Starts the preferred terminal of the graphical environment, and runs the command in it</li>
+<li><code><font size="+1">Embedded</font></code>: Makes use of a special feature of the file manager which allows a terminal to be ran inside of it; an acceptable fallback is <code><font size="+1">Terminal</font></code></li>
+<li><code><font size="+1">DisplayOutput</font></code>: The ran terminal may be closed at end of the command, but standard streams (stdout, stderr) should be collected and displayed; an acceptable fallback is <code><font size="+1">Terminal</font></code></li>
+</ul>
+Defaults to "<code><font size="+1">Normal</font></code>".
+</td>
+<td>string</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">StartupNotify</font></code></td>
+<td>From <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">DES</a>: if "<code><font size="+1">true</font></code>", it is KNOWN that the application will send a "remove" message when started with the DESKTOP_STARTUP_ID environment variable set. If "<code><font size="+1">false</font></code>", it is KNOWN that the application does not work with startup notification at all (does not shown any window, breaks even when using StartupWMClass, etc.). If absent, a reasonable handling is up to implementations (assuming false, using StartupWMClass, etc.). (See the <a href="http://www.freedesktop.org/Standards/startup-notification-spec">Startup Notification Protocol Specification</a> for more details).<br>
+Only relevant when <code><font size="+1">ExecutionMode=Normal</font></code>.<br>
+Defaults to "<code><font size="+1">false</font></code>".</td>
+<td>boolean</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">StartupWMClass</font></code></td>
+<td>From <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">DES</a>: if specified, it is known that the application will map at least one window with the given string as its WM class or WM name hint (see the <a href="http://www.freedesktop.org/Standards/startup-notification-spec">Startup Notification Protocol Specification</a> for more details). <br>
+Only relevant when <code><font size="+1">ExecutionMode=Normal</font></code>.<br>
+Defaults to empty.</td>
+<td>string</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">ExecuteAs</font></code></td>
+<td>The user the command must be ran as. The user may be identified by its numeric UID or by its login.<br>
+The implementation should ignore a profile defining a non-existing UID or login as a value for the <code><font size="+1">ExecuteAs</font></code> key.<br>
+The implementation might require the presence of a well-configured subsystem (e.g. sudo).<br>
+Defaults to empty: the command will be executed as the current user.</td>
+<td>string</td>
+<td>no</td>
+</tr>
+</tbody></table>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2>Menu definition</h2>
+
+<p>
+Just as an action, a menu has label, tooltip, icon.
+</p>
+<p>
+But, where an action is intended to eventually execute a command, a menu is just a way of gathering some subitems, actions or menus, in an ordered list.
+</p>
+<p>
+In order to be valid, a menu must have a non-empty name, and include at least one valid subitem.
+</p>
+<p>
+It is the responsability of the implementation to ensure that the displayed menus are relevant, <i>i.e.</i> not empty, with no separator at the begin or the end of the menu, with no double separator, etc.
+</p>
+<p>
+As stated <a href="#managed-menus">above</a>, a menu may embed its own conditions. If these conditions are not met at runtime, then subitems are not even considered.
+</p>
+<p>
+The menu is so defined as a particular case of a <code><font size="+1">.desktop</font></code> file, identified by its <i>desktop_file_id</i>, whose the <code><font size="+1">[Desktop Entry]</font></code> section has following keys:
+</p>
+
+<table border="1">
+<tbody><tr valign="top">
+<td nowrap="nowrap"><b>Key</b></td>
+<td><b>Description</b></td>
+<td nowrap="nowrap"><b>Value type</b></td>
+<td><b>Req ?</b></td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Type</font></code></td>
+<td>This define this <code><font size="+1">.desktop</font></code> file as a Menu definition.<br>
+Must be equal to "<code><font size="+1">Menu</font></code>".</td>
+<td>string</td>
+<td>YES</td>
+</tr><tr valign="top">
+<td><code><font size="+1">Name</font></code></td>
+<td>The label of the menu, as it should appear in the context menu.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">Name</font></code> value, and will be substituted at runtime.</td>
+<td>localestring</td>
+<td>YES</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Tooltip</font></code></td>
+<td>The tooltip associated with the submenu in the context menu.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">Tooltip</font></code> value, and will be substituted at runtime.<br>
+Defaults to empty.
+</td>
+<td>localestring</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Icon</font></code></td>
+<td>The name of a themed icon, or the path to an icon, to be associated to the submenu.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">Icon</font></code> value, and will be substituted at runtime.<br>
+Defaults to empty.</td>
+<td>localestring</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Description</font></code></td>
+<td>A free description of the menu, which may be used in the management UI, in a Web page, and so on.<br>
+Defaults to empty.</td>
+<td>localestring</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">SuggestedShortcut</font></code></td>
+<td>A shortcut suggested for the menu.<br>
+Please note that this might be only a suggestion as the shortcut may be already reserved for another use. Implementation should not override an already existing shortcut to define this one.<br>
+The format may look like "&lt;Control&gt;a" or "&lt;Shift&gt;&lt;Alt&gt;F1".<br>
+Defaults to empty.</td>
+<td>string</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Enabled</font></code></td>
+<td>Whether the item is candidate to be displayed in the context menu.<br>
+A user might define many actions or menus, and choose to only enable some of them from time to time.<br>
+Defaults to "<code><font size="+1">true</font></code>".</td>
+<td>boolean</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Hidden</font></code></td>
+<td>From <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">DES</a>: <code><font size="+1">Hidden</font></code> should have been called <code><font size="+1">Deleted</font></code>. It means the user deleted (at his level) something that was present (at an upper level, e.g. in the system dirs). It's strictly equivalent to the <code><font size="+1">.desktop</font></code> file not existing at all, as far as that user is concerned. This can also be used to "uninstall" existing files (e.g. due to a renaming) - by letting make install install a file with <code><font size="+1">Hidden=true</font></code> in it.<br>
+Defaults to "<code><font size="+1">false</font></code>".</td>
+<td>boolean</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td id="itemslist" nowrap="nowrap"><code><font size="+1">ItemsList</font></code></td>
+<td><p>The ordered list of the subitems (actions or menus) attached to this menu.<br>
+Each element of this strings list may be:
+</p><ul>
+<!--
+Wrong formulation because this prevent to use GConf uuid
+<li>a <i>desktop_file_id</i>, <i>i.e.</i> the id of a <code><font size="+1">.desktop</font></code> file which describes an action or a menu,</li>
+-->
+<li>the id of an action or a menu,</li>
+<li>a command to be executed, if the string is enclosed between square brackets ('<code><font size="+1">[</font></code>'...'<code><font size="+1">]</font></code>').</li>
+</ul>
+So, "<code><font size="+1">ItemsList</font></code>" key has a dynamic value: if an element of the string list is enclosed between square brackets ('<code><font size="+1">[</font></code>'...'<code><font size="+1">]</font></code>'), it is considered as a command, optionally with <a href="#parameters">parameters</a> and arguments, and so will be subject to an evaluation at runtime. If the standard output of the command is a valid strings list, then it is substituted to the bracketed element. It the command doesn't exist or cannot be executed, the bracketed element is just ignored.
+<p></p>
+<p>
+The keyword <code><font size="+1">SEPARATOR</font></code> is a special case of <i>desktop_file_id</i>. It may be used to define a separator in the menu.
+</p>
+<p>
+Actions or menus identified here as a subitem of a menu should not be redisplayed elsewhere.
+</p>
+<p>
+Actions or menus not identified here, or not identified as subitems of a menu or of a submenu, should not be ignored by the implementation; instead of that, the implementation should display these « orphan » items, most probably at the level zero of the hierarchy (though in a unspecified order).
+</p>
+</td>
+<td>strings list</td>
+<td>YES</td>
+</tr>
+
+</tbody></table>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2>Conditions</h2>
+
+<p>
+As a remainder of that has been said above, each one of the following conditions may appear in a menu, an action or a profile.
+</p>
+<p>
+Conditions are AND-ed, that is all specified conditions which appear in a menu, an action or a profile must be met in order the item be considered as a candidate.
+</p>
+<p>
+When a condition is defined as a string list, elements of the list are considered as OR-ed (but for <a href="#capabilities">Capabilities</a>).<br>
+When an element of the string list is negated, it must be considered as an AND condition.
+</p>
+<p>Example:</p>
+<blockquote>
+<p>
+The line « <code><font size="+1">MimeTypes = image/*; video/*;</font></code> » must be readen as « condition is met if each file in the current selection has a mimetype of "<code><font size="+1">image/*</font></code>" or of "<code><font size="+1">video/*</font></code>" »
+</p>
+<p>And the line « <code><font size="+1">MimeTypes = image/*; video/*; !image/bmp</font></code> » must be readen as « condition is met if each file in the current selection has a mimetype of "<code><font size="+1">image/*</font></code>" or of "<code><font size="+1">video/*</font></code>", but must not have the "<code><font size="+1">image/bmp</font></code>" mimetype ».
+</p>
+</blockquote>
+
+<table border="1">
+<tbody><tr valign="top">
+<td><b>Key</b></td>
+<td><b>Description</b></td>
+<td nowrap="nowrap"><b>Value type</b></td>
+<td><b>Req ?</b></td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">OnlyShowIn</font></code>,<br><code><font size="+1">NotShowIn</font></code></td>
+<td>From <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">DES</a>: a list of strings identifying the environments that should display/not display a given desktop entry. Only one of these keys, either <code><font size="+1">OnlyShowIn</font></code> or <code><font size="+1">NotShowIn</font></code>, may appear in a group (for possible values see the <a href="http://www.freedesktop.org/Standards/menu-spec">Desktop Menu Specification</a>).<br>
+Defaults to show anywhere.</td>
+<td nowrap="nowrap">strings list</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">TryExec</font></code></td>
+<td>Fromn <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">DES</a>: path to an executable file on disk used to determine if some program is actually installed. If the path is not an absolute path, the file is looked up in the $PATH environment variable. If the file is not found or is not executable, this condition evals to <code><font size="+1">false</font></code>.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">TryExec</font></code> value, and will be substituted at runtime.<br>
+Defaults to successful.</td>
+<td>string</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">ShowIfRegistered</font></code></td>
+<td>The well-known name of a DBus service.<br>
+The item will be candidate if the named service is registered on session DBus at runtime.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">ShowIfRegistered</font></code> value, and will be substituted at runtime.<br>
+Defaults to successful.<br>
+<table border="0">
+<tbody><tr>
+<td valign="top"><i>Comment:</i></td>
+<td valign="top"><i>This is the equivalent of KDE "<code><font size="+1">X-KDE-ShowIfRunning</font></code>" key.</i></td>
+</tr>
+</tbody></table>
+</td>
+<td>string</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">ShowIfTrue</font></code></td>
+<td>A command which, when executed, should output a string on stdout.<br>
+The item will be candidate if the outputed string is equal to "<code><font size="+1">true</font></code>".<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">ShowIfTrue</font></code> value, and will be substituted at runtime.<br>
+Example: <code><font size="+1">[ -r %d/.svn/entries ] &amp;&amp; echo "true"</font></code><br>
+Defaults to successful.<br>
+<table border="0">
+<tbody><tr>
+<td valign="top"><i>Comment:</i></td>
+<td valign="top"><i>This is the equivalent of KDE "<code><font size="+1">X-KDE-ShowIfDBusCall</font></code>" key, extended to any command able to output a string.</i></td>
+</tr>
+</tbody></table>
+</td>
+<td>string</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">ShowIfRunning</font></code></td>
+<td>The name of a process.<br>
+The item will be candidate if the process name is found in memory at runtime.<br>
+<a href="#parameters">Parameters</a> may appear in <code><font size="+1">ShowIfRunning</font></code> value, and will be substituted at runtime.<br>
+Defaults to successful.
+</td>
+
+<td>string</td>
+<td>no</td>
+</tr>
+<tr valign="top">
+<td><code><font size="+1">MimeTypes</font></code></td>
+<td>From <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">DES</a>: the MIME type(s) supported by this application.<br>
+Each mimetype may be fully specified (e.g. "<code><font size="+1">audio/mpeg;</font></code>"), or as a group (e.g. "<code><font size="+1">image/*;</font></code>").<br>
+Mimetypes may be negated (e.g. "<code><font size="+1">audio/*; !audio/mpeg;</font></code>").<br>
+Some of well-known mimetypes include:<br>
+<ul>
+<li>"<code><font size="+1">all/all</font></code>": matches all items</li>
+<li>"<code><font size="+1">all/allfiles</font></code>": matches only files</li>
+<li>"<code><font size="+1">inode/directory</font></code>": matches only directories</li>
+</ul>
+'<code><font size="+1">*</font></code>' character is accepted as a wildcard in only two cases:
+<ul>
+<li>when used alone as in "<code><font size="+1">*;</font></code>", <i>i.e.</i> when used as a group wildcard without subgroup,</li>
+<li>when used as the subgroup wildcard, after the '<code><font size="+1">/</font></code>' character, as in "<code><font size="+1">image/*</font></code>".</li>
+</ul>
+Defaults to "<code><font size="+1">*;</font></code>", which happends to be exactly equivalent to "<code><font size="+1">all/all</font></code>" or to "<code><font size="+1">all/*</font></code>".
+<table border="0">
+<tbody><tr>
+<td valign="top"><i>Comment:</i></td>
+<!--
+<td valign="top"><i>Do we should include "<code><font size="+1">allfiles</font></code>" mimetype, which seems obsolete, in order to keep compatibility with some old versions of KDE ?</i></td>
+</tr>
+<tr>
+-->
+<td></td>
+<td><i>This is the equivalent of "<code><font size="+1">ServiceTypes</font></code>", "<code><font size="+1">X-KDE-ServiceTypes</font></code>", "<code><font size="+1">ExcludeServiceTypes</font></code>" KDE and "<code><font size="+1">MimeType</font></code>" freedesktop keys.</i></td>
+</tr>
+</tbody></table>
+</td>
+<td>strings list</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Basenames</font></code></td>
+<td>List of basenames the selection should match in order this profile be selected.<br>
+'<code><font size="+1">*</font></code>' character is accepted as a wildcard.<br>
+Basenames may be negated (e.g. "<code><font size="+1">*; !*.h;</font></code>").<br>
+Defaults to "<code><font size="+1">*;</font></code>".</td>
+<td>strings list</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Matchcase</font></code></td>
+<td>Whether the above <code><font size="+1">Basenames</font></code> is case sensitive.<br>
+Defaults to "<code><font size="+1">true</font></code>".</td>
+<td>boolean</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td id="selection-count"><code><font size="+1">SelectionCount</font></code></td>
+<td>Whether this profile may be selected depending of the count of the selection.<br>
+This is a string of the form "<code><font size="+1">{'&lt;'|'='|'&gt;'} number</font></code>".<br>
+Examples of valid strings are: "<code><font size="+1">=0</font></code>", "<code><font size="+1">&gt; 1</font></code>", "<code><font size="+1">&lt; 10</font></code>".<br>
+Defaults to "<code><font size="+1">&gt;0</font></code>".
+</td>
+<td>string</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Schemes</font></code></td>
+<td>The list of schemes the selection must satisfy in order the item be selected.<br>
+Exemples of well-known schemes are:<br>
+<ul>
+<li>"<code><font size="+1">file</font></code>"</li>
+<li>"<code><font size="+1">sftp</font></code>"</li>
+<li>"<code><font size="+1">smb</font></code>"</li>
+<li>"<code><font size="+1">http</font></code>"</li>
+</ul>
+Schemes may be negated, e.g. "<code><font size="+1">!http;</font></code>".<br>
+Defaults to "<code><font size="+1">*;</font></code>".
+<table border="0">
+<tbody><tr>
+<td valign="top"><i>Comment:</i></td>
+<td valign="top"><i>This is the equivalent of "<code><font size="+1">X-KDE-Protocol</font></code>" and "<code><font size="+1">X-KDE-Protocols</font></code>" KDE keys.</i></td>
+</tr>
+<!--
+<tr>
+<td></td>
+<td><i>Does a "Protocols" key would be better understood than a "Schemes" key ?</i></td>
+</tr>
+-->
+</tbody></table>
+</td>
+<td>strings list</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">Folders</font></code></td>
+<td>A list of paths the current base directory must be in in order the item be selected.<br>
+A folder path may be negated (e.g. "<code><font size="+1">/data; !/data/resources/secret;</font></code>").<br>
+'<code><font size="+1">*</font></code>' character is accepted as a wildcard, replacing any level(s) of subdirectory (e.g. "<code><font size="+1">/music; /video; !*/secret;</font></code>").<br>
+Also note that a terminating '<code><font size="+1">/*</font></code>' is always implied by the definition of this key.<br>
+Last, note that different implementations today widely consider that, for a directory point of view, having no selection is roughly the same that selecting the currently opened folder. If this makes a difference for your action, then <a href="#selection-count">SelectionCount</a> is for you.
+Defaults to "<code><font size="+1">/</font></code>".</td>
+<td>strings list</td>
+<td>no</td>
+</tr>
+
+<tr valign="top">
+<td id="capabilities"><code><font size="+1">Capabilities</font></code></td>
+<td>A list of capabilities each item of the selection must satisfy in order the item be candidate.<br>
+Capabilities may be negated.<br>
+Please note that each element of the specified list must be considered as ANDed, i.e. if we have "<code><font size="+1">Capabilities=Readable;Writable;!Local</font></code>", then each element of the selection must be both readable AND writable AND not local.<br>
+Capabilities have to be choosen between following predefined ones:
+<ul>
+<li>"<code><font size="+1">Owner</font></code>": current user is the owner of selected items</li>
+<li>"<code><font size="+1">Readable</font></code>": selected items are readable by user (probably more usefull when negated)</li>
+<li>"<code><font size="+1">Writable</font></code>": selected items are writable by user</li>
+<li>"<code><font size="+1">Executable</font></code>": selected items are executable by user</li>
+<li>"<code><font size="+1">Local</font></code>": selected items are local</li>
+</ul>
+Defaults to an empty list (do not care of capabilities).
+<table border="0">
+<tbody><tr>
+<td valign="top"><i>Comment:</i></td>
+<td valign="top"><i>This is the equivalent of "<code><font size="+1">X-KDE-Require</font></code>" KDE key.</i></td>
+</tr>
+<!--
+<tr>
+<td></td>
+<td><i>Some other relevant capabilities ?</i></td>
+</tr>
+-->
+</tbody></table>
+</td>
+<td>strings list</td>
+<td>no</td>
+</tr>
+
+</tbody></table>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2 id="parameters">Parameters</h2>
+
+<h3 id="parm-expansion">Parameters expansion</h3>
+<p>
+Whenever parameters are said to be accepted, they will be replaced at run-time.
+</p>
+<p>
+It should be noted by the implementation that items, actions or menus, which were considered valid at load time, may become invalid after parameters expansion, due, for example, to a label becoming empty.
+</p>
+<p>
+Also, this specification doesn't make any assumption about whether a parameter is relevant in a given situation, or secure, or may be used several times, or so. It instead considers that this sort of check is up to the action creator.
+</p>
+<p>
+The implementation should take care of correctly shell-escape the substituted values, so that it should not be needed for the action creator to use any sort of quotes to handle spaces in filenames.
+</p>
+
+<h3 id="parm-singular">Multiple execution</h3>
+<p>
+The action creator may want its command be executed once, giving it the list of selected items as argument.
+</p>
+<p>
+Or the action creator may want its command be repeated for each selected item, giving to each execution a different item as argument.
+</p>
+<p>
+Actually, the command defined in the <code><font size="+1">Exec</font></code> key will be executed once, or repeated for each selected item, depending of the form of arguments.
+</p>
+<p>
+Though some parameters are not sensible to the count of the selection (e.g. "<code><font size="+1">%c</font></code>", the selection count itself), most have two declensions:
+</p><ul>
+<li>a "singular" one, e.g. "<code><font size="+1">%b</font></code>", the basename of the selected item</li>
+<li>a "plural" one, e.g. "<code><font size="+1">%B</font></code>", a space-separated list of the basenames of selected items</li>
+</ul>
+<p></p>
+<p>
+When the selection is empty or contains only one element, and from this topic point of view, these two forms are exactly equivalent.
+</p>
+<p>
+When the selection contains more than one item:
+</p><ul>
+<li>if the first relevant parameter found in the <code><font size="+1">Exec</font></code> key is of a singular form, then the implementation should consider that the command is only able to deal with one item at a time, and thus that it has to be ran one time for each selected item;</li>
+<li>contrarily, if the first relevant parameter found is of the plural form, then the implementation should consider that the command is able to deal with a list of items, and thus the command should be executed only once;</li>
+<li>if all found parameters are « irrelevant », then the default is to consider that the command should be executed only once.</li>
+</ul>
+<p></p>
+<p>
+Example:
+</p>
+<blockquote>
+<p>
+Say the current folder is /data, and the current selection contains the three files <code><font size="+1">pierre</font></code>, <code><font size="+1">paul</font></code> and <code><font size="+1">jacques</font></code>.
+</p>
+<p>
+If the <code><font size="+1">Exec</font></code> key is "<code><font size="+1">echo %b</font></code>", then the following commands will be run:<br>
+"<code><font size="+1">echo pierre</font></code>"<br>
+"<code><font size="+1">echo paul</font></code>"<br>
+"<code><font size="+1">echo jacques</font></code>"<br>
+</p>
+<p>
+If the <code><font size="+1">Exec</font></code> key is "<code><font size="+1">echo %B</font></code>", then the following command will be run:<br>
+"<code><font size="+1">echo pierre paul jacques</font></code>"
+</p>
+<p>
+If the <code><font size="+1">Exec</font></code> key is "<code><font size="+1">echo %b %B</font></code>", then the following commands will be run:<br>
+"<code><font size="+1">echo pierre pierre paul jacques</font></code>"<br>
+"<code><font size="+1">echo paul pierre paul jacques</font></code>"<br>
+"<code><font size="+1">echo jacques pierre paul jacques</font></code>"<br>
+</p>
+<p>
+If the <code><font size="+1">Exec</font></code> key is "<code><font size="+1">echo %B %b</font></code>", then the following commands will be run:<br>
+"<code><font size="+1">echo pierre paul jacques pierre</font></code>"<br>
+The basename used is those of the first item of the selected items list as provided by the file manager. There is only a small chance that it would be those of the first visually selected item, and there is contrarily great chances that it would not be predictable at all.
+</p>
+<p>
+Even if the choosen parameter is the same for all selected items, the behavior is the identical.<br>
+If the <code><font size="+1">Exec</font></code> key is "<code><font size="+1">echo %d %B</font></code>", then the following commands will be run:<br>
+"<code><font size="+1">echo /data pierre paul jacques</font></code>"<br>
+"<code><font size="+1">echo /data pierre paul jacques</font></code>"<br>
+"<code><font size="+1">echo /data pierre paul jacques</font></code>"<br>
+which obviously doesn't make many sense.
+</p>
+<p>
+As the last three examples show up, action creator should avoid to mix singular and plural forms, unless they know what they are doing, whether it doesn't make sense or this may lead to unwaited results.
+</p>
+<p>
+Nonetheless, mixing singular and plural forms, though we warn against, is not an error. As a counter example, there may be some situations where a command-line of the form "<code><font size="+1">echo %B %d</font></code>" would be useful. In that case, the following command would be run:<br>
+"<code><font size="+1">echo pierre paul jacques /data</font></code>"<br>
+It is left as an exercize for the reader to find a use case.
+</p>
+</blockquote>
+
+<p>
+The word "first" in the following table makes so reference to the case where the singular form parameter is used in a plural form command. We recall one more time that which is the "first" element is not specified, and, most probably, rather unpredictable.
+</p>
+
+<table border="1">
+<tbody><tr valign="top">
+<td align="center"><b>Parameter</b></td>
+<td><b>Description</b></td>
+<td colspan="3" align="center"><b>Said form</b></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%b</td>
+<td>(first) basename</td>
+<td>singular</td>
+<td></td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%B</td>
+<td>space-separated list of basenames</td>
+<td></td>
+<td></td>
+<td>plural</td>
+</tr>
+
+<tr valign="top">
+<td align="center">%c</td>
+<td>count of selected items</td>
+<td></td>
+<td>irrelevant</td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%d</td>
+<td>(first) base directory</td>
+<td>singular</td>
+<td></td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%D</td>
+<td>space-separated list of base directory of each selected items</td>
+<td></td>
+<td></td>
+<td>plural</td>
+</tr>
+
+<tr valign="top">
+<td align="center">%f</td>
+<td>(first) file name</td>
+<td>singular</td>
+<td></td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%F</td>
+<td>space-separated list of selected file names</td>
+<td></td>
+<td></td>
+<td>plural</td>
+</tr>
+
+<tr valign="top">
+<td align="center">%h</td>
+<td>hostname of the (first) URI</td>
+<td></td>
+<td>irrelevant</td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%m</td>
+<td>mimetype of the (first) selected item</td>
+<td>singular</td>
+<td></td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%M</td>
+<td>space-separated list of the mimetypes of the selected items</td>
+<td></td>
+<td></td>
+<td>plural</td>
+</tr>
+
+<tr valign="top">
+<td align="center">%n</td>
+<td>username of the (first) URI</td>
+<td></td>
+<td>irrelevant</td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%o</td>
+<td>no-op operator which forces a singular form of execution when specified as first parameter,<br>
+ignored else</td>
+<td>singular</td>
+<td></td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%O</td>
+<td>no-op operator which forces a plural form of execution when specified as first parameter,<br>
+ignored else</td>
+<td></td>
+<td></td>
+<td>plural</td>
+</tr>
+
+<tr valign="top">
+<td align="center">%p</td>
+<td>port number of the (first) URI</td>
+<td></td>
+<td>irrelevant</td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%s</td>
+<td>scheme of the (first) URI</td>
+<td></td>
+<td>irrelevant</td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%u</td>
+<td>(first) URI</td>
+<td>singular</td>
+<td></td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%U</td>
+<td>space-separated list of selected URIs</td>
+<td></td>
+<td></td>
+<td>plural</td>
+</tr>
+
+<tr valign="top">
+<td align="center">%w</td>
+<td>(first) basename without the extension</td>
+<td>singular</td>
+<td></td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%W</td>
+<td>space-separated list of basenames without their extension</td>
+<td></td>
+<td></td>
+<td>plural</td>
+</tr>
+
+<tr valign="top">
+<td align="center">%x</td>
+<td>(first) extension</td>
+<td>singular</td>
+<td></td>
+<td></td>
+</tr>
+
+<tr valign="top">
+<td align="center">%X</td>
+<td>space-separated list of extensions</td>
+<td></td>
+<td></td>
+<td>plural</td>
+</tr>
+
+<tr valign="top">
+<td align="center">%%</td>
+<td>the « % » character</td>
+<td></td>
+<td>irrelevant</td>
+<td></td>
+</tr>
+
+</tbody></table>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2 id="hierarchy">Building the whole hierarchy</h2>
+
+<p>
+The processus described here is only a sort of meta-algorythm, whose only goal is to better specify how the menus and actions should be layouted in the final hierarchy.
+</p>
+<p>
+The implementor might take advantage of preparing once the whole hierarchy of the menus and actions:
+</p>
+<ul>
+<li>to minimize the time spent in the parsing of all files;</li>
+<li>to identify and eliminate duplicate <i>desktop_file_id</i>s,</li>
+<li>to eliminate invalid menus and actions.</li>
+</ul>
+<p>
+</p><ol>
+<li>as described in <a href="#searchpath">Desktop files search path</a> chapter, scan relevant directories, eliminating duplicate <i>desktop_file_id</i>s and invalid <code><font size="+1">.desktop</font></code> files; implentation so obtains a flat list of menus or actions;<br> </li>
+<li>recursively build the hierarchy; this merely consists in the build of the hierarchy as a tree of menus and actions, where each <i>desktop_file_id</i> addressed as the subitem of a menu consumes this same id from the flat list
+<ul>
+<li>if the level-zero order (which is not specified here, but see <a href="#level-zero">Appendix A</a> for a proposal) is defined by the implementation, then each <i>desktop_file_id</i> addressed in the level zero consumes this same id from the flat list;</li>
+<li>else, if might be reasonable to start with an empty tree;</li>
+</ul><br> </li>
+<li>at the end, implementation stays with:
+<ul>
+<li>the output tree with some menus at the root;</li>
+<li>some actions, left in the input flat list because they were not addressed by any menu; these left actions should be added to the level zero of the hierarchy (though in a unspecified order)</li>
+<li>some menus, left in the input flat list because their subitems were not found; as these menus happen to be empty, they must be considered as invalid.</li>
+</ul></li>
+</ol>
+<p></p>
+<p>
+After this built phase, the resultant tree only contains valid (before runtime parameters expansion) menus and actions.
+</p>
+<p>
+So, menus or actions may appear at the level zero of the whole hierarchy for only two reasons:
+</p><ol>
+<li>because they are explicitly addressed by the level-zero configuration, if the implementation defines it; this may concern menus and actions;</li>
+<li>because these items were not adressed by any menu (but this may only concern actions).</li>
+</ol>
+<p></p>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2 id="level-zero">Appendix A. The level-zero case</h2>
+
+<p>
+Though not strictly an action or a menu definition, the level-zero issue might be easily solved by this specification. The implementation is free to implement it or not.
+</p>
+<p>
+Ordering the elements which have to be displayed at the level-zero of the file manager context menu is just a particular case of a menu definition.
+</p>
+<p>
+An implementation might define a <code><font size="+1">level-zero.directory</font></code> file, which would contain the ordered list of level zero items identified by their <i>desktop_file_id</i>.
+</p>
+<p>
+The <code><font size="+1">[Desktop Entry]</font></code> section of this <code><font size="+1">level-zero.directory</font></code> file would so have only one of the following keys:
+</p>
+
+<table border="1">
+<tbody><tr valign="top">
+<td nowrap="nowrap"><b>Key</b></td>
+<td><b>Description</b></td>
+<td nowrap="nowrap"><b>Value type</b></td>
+<td><b>Req ?</b></td>
+</tr>
+
+<tr valign="top">
+<td><code><font size="+1">ItemsList</font></code></td>
+<td>Same signification as <a href="#itemslist">above</a><br>
+</td>
+<td>strings list</td>
+<td>no</td>
+</tr>
+<!--
+<tr valign="top">
+<td><code><font size="+1">GetItemsList</font></code></td>
+<td>Same signification as
+<a href="http://www.nautilus-actions.org/?q=node/377#getitemslist">above</a><br />
+</td>
+<td>string</td>
+<td>no</td>
+</tr>
+-->
+</tbody></table>
+
+<p>
+The <code><font size="+1">level-zero.directory</font></code> file may be searched for in <code><font size="+1">XDG_DATA_DIRS/file-manager/actions</font></code>. The first one found would be used.
+</p>
+<p>
+Not finding a <code><font size="+1">level-zero.directory</font></code> file should not prevent actions or menus to be displayed. Instead, they just would be displayed in an unspecified, implementation-dependant, order.
+</p>
+<p>
+The name "<code><font size="+1">level-zero.directory</font></code>" is choosen to not risk any collision with regular <code><font size="+1">.desktop</font></code> files.
+</p>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2 id="menu-rationales">Appendix B. Some rationales about menu definition</h2>
+
+<h3>The KDE way</h3>
+
+<p>
+KDE defines the "<code><font size="+1">X-KDE-Submenu</font></code>" key. This key defines the label of a submenu the current action(s) should be included in. Order of the actions in this submenu is defined by the "<code><font size="+1">Actions</font></code>" key, though this might be altered by the "<code><font size="+1">X-KDE-Priority</font></code>" key. When several <code><font size="+1">.desktop</font></code> files define the same submenu, actions are merged.
+</p>
+<p>
+What are the advantages of this solution ?
+</p>
+<ul>
+<li>It exists, and is widely used in KDE ServiceMenus.</li>
+<li>This is a down-to-top, self-contained, approach where each action says in which submenu it whishes to be included in.</li>
+</ul>
+<p>
+What are the inconvenients of this solution ?
+</p>
+<ul>
+<li>It lacks of an <code><font size="+1">Icon</font></code> key associated to the submenu; though this certainly be added, the risk exists that several submenus with same label actually define different icons.</li>
+<li>It lacks of a <code><font size="+1">Tooltip</font></code> key associated to the submenu (though... idem as above)</li>
+<li>When several <code><font size="+1">.desktop</font></code> files define the same submenu (<i>i.e.</i> the same label), a merge operation is done so that all actions are included in the same submenu. The order of the actions after such a merge operation is not defined.</li>
+<li>There is no way to define the global order of the actions, when all <code><font size="+1">.desktop</font></code> files have been dealt with.</li>
+<li>As the menu is adressed at the action-level, one has to modifiy each action when he wants to reorganize his menus.</li>
+<li>Whether there is any menu or not, there is no way to define order of level-zero elements.</li>
+</ul>
+
+<h3>An alternate way</h3>
+
+<p>
+As the menu may be seen as just a particular case of action, it appears logically that its definition may directly be derived from the action definition.
+</p>
+<p>
+What are the advantages (over the KDE way) of using this definition ?
+</p>
+<ul>
+<li>User/sysadmin has full control on the order of the displayed items, and on the content of the submenus.</li>
+<li>Defining menus outside of the actions is a conceptual advantage; this let creators of actions do their work without having to wonder in which menu the action should go.</li>
+<li>There is no way for an action creator to decide himself if its action is <i>Important</i> or should be displayed at the <i>TopLevel</i>.</li>
+<li>Associated with <i>ad-hoc</i> conditions, we are able to define conditional menus, thus optimizing the building of the whole contextual menu.</li>
+<li>This is not XML ;-)</li>
+</ul>
+<p>
+What are the inconvenients ?
+</p>
+<ul>
+<li>As a top-to-down approach, just dropping a new <code><font size="+1">.desktop</font></code> file somewhere is not enough to get advantage of this; not referenced actions or submenus will just be displayed anywhere in the contextual menu.</li>
+</ul>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2 id="example-c">Appendix C. An example of an action</h2>
+
+<p>
+In the following example, we define an "Open terminal here" action, which has three profiles. These profiles are thought to be able to open a suitable terminal in most situations. They are ordered, and so only the first profile whose conditions are met at runtime will be used in the file manager context menu.
+</p>
+
+<blockquote>
+<pre>    [Desktop Entry]
+Name = Open terminal here
+Tooltip = Open a new terminal here
+Icon = terminal
+Profiles = on_folder; on_file; on_desktop;
+
+[X-Action-Profile on_folder]
+Name = open a terminal on the current folder or on the selected folder
+MimeTypes = inode/directory;
+# note that this means strictly less than 2, as the equal sign is part of the DES syntax
+SelectionCount = &lt; 2
+Exec = gnome-terminal --working-directory=%d
+
+[X-Action-Profile on_file]
+Name = open a terminal in the folder which contains selected items
+MimeTypes = all/allfiles;
+Exec = gnome-terminal --working-directory=$(echo %D | cut -d' ' -f1)
+
+[X-Action-Profile on_desktop]
+Name = open a terminal of the desktop
+Schemes = x-nautilus-desktop;
+Exec = gnome-terminal --working-directory=~/Desktop
+</pre>
+</blockquote>
+
+<p>
+Note that this is only an example of how an action may be defined in a <code><font size="+1">.desktop</font></code> file. It has not been deeply tested, and there is most probably more efficient ways of opening a terminal somewhere...
+</p>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2 id="example-d">Appendix D. An example of a menu</h2>
+
+<p>
+Say for the example that the action defined <a href="#example-c">in previous appendix</a> is saved as <code><font size="+1">~/.local/share/file-manager/actions/open-terminal.desktop</font></code> file.
+</p>
+<p>
+et define a menu which will embed this action. We will so create a second <code><font size="+1">.desktop</font></code> file, with following content:
+</p>
+
+<blockquote>
+<pre>    [Desktop Entry]
+Type = Menu
+Name = Terminal menu
+Tooltip = Some actions on terminals
+Icon = terminal-group
+ItemsList = open-terminal;
+</pre>
+</blockquote>
+
+<p>
+This may be saved, e.g. as <code><font size="+1">~/.local/share/file-manager/actions/menu-terminal.desktop</font></code> file.
+</p>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2 id="refs">References</h2>
+
+<ul>
+<li><a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">Desktop Entry Specification</a></li>
+<li><a href="http://standards.freedesktop.org/menu-spec/menu-spec-latest.html" target="_blank">Desktop Menu Specification</a></li>
+<li><a href="http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html" target="_blank">XDG Base Directory Specification</a></li>
+<li><a href="http://developer.kde.org/documentation/tutorials/dot/servicemenus.html" target="_blank">Creating Konqueror Service Menus</a></li>
+<li><a href="http://www.krusader.org/handbook/useractions.html" target="_blank">Krusader UserActions</a></li>
+<li><a href="http://thunar.xfce.org/pwiki/documentation/custom_actions" target="_blank">Thunar Custom Actions</a></li>
+</ul>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2 id="contributors">Contributors</h2>
+
+<ul>
+<li>Jonas Bähr</li>
+<li>David Faure</li>
+<li>Ted Gould</li>
+<li>Hong Jen Yee « PCMan »</li>
+<li>Michael Pyne</li>
+<li>Liam R. E. Quin</li>
+<li>Pierre Wieser</li>
+</ul>
+
+<!-- ----------------------------------------------------------------------------- -->
+
+<h2 id="changelog">ChangeLog</h2>
+
+<table border="1">
+<tbody><tr>
+<td align="center">Version</td>
+<td align="center">Date</td>
+<td>Changes</td>
+</tr>
+
+<tr>
+<td align="center">0.1-draft</td>
+<td align="center">2009-12-07</td>
+<td>Creation</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.2-draft</td>
+<td align="center">2009-12-17</td>
+<td>
+- Move syntax considerations to a new "Desktop file" section.<br>
+- Add "Managed objects" section.<br>
+- Add "Defining menus" section.<br>
+- Deal with level zero items.<br>
+- Define a separate "Conditions" section.<br>
+- Remove "Rationales" section, moving comments to the corresponding key description.<br>
+- Remove <code><font size="+1">Type</font></code> key<br>
+- Remove all <code><font size="+1">X-Action-</font></code> prefix of the key names.<br>
+- Add needed keys in order to provider equivalent functionalities to KDE service menus.<br>
+- Current and extensions keys have been merged in the same table.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.3-draft</td>
+<td align="center">2009-12-23</td>
+<td>
+- No more talk about « extending », but rather of « deriving ».<br>
+- Replace « <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank"><acronym>fds</acronym></a> » acronym with « <a href="http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html" target="_blank">DES</a> ».<br>
+- More clearly notice what this specification specifies, and what it doesn't specify.<br>
+- Move the « level-zero » case to a specific <a href="#level-zero">appendix</a>, as not a main part of this specification.<br>
+- Move rationales about the menu description to a specific <a href="#menu-rationales">appendix</a>.<br>
+- <code><font size="+1">Comment</font></code> key is renamed as <code><font size="+1">Tooltip</font></code> in menu and action definitions.<br>
+- Add <code><font size="+1">Description</font></code>, <code><font size="+1">SuggestedShortcut</font></code> keys to menu and action definitions.<br>
+- Add <code><font size="+1">Path</font></code>, <code><font size="+1">StartupNotify</font></code>, <code><font size="+1">StartupWMClass</font></code>, <code><font size="+1">ForEach</font></code> keys to profile definition.<br>
+- Remove <code><font size="+1">SelectionCount</font></code> key.<br>
+- Define available parameters.<br>
+- Create <a href="#contributors">Contributors</a> chapter.<br>
+- Create <a href="#refs">References</a> chapter.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.4-draft</td>
+<td align="center">2010-01-07</td>
+<td>
+- Remove <code><font size="+1">ToolbarSameLabel</font></code> action property.<br>
+- Add <code><font size="+1">ExecuteAs</font></code> profile property.<br>
+- Restore <code><font size="+1">SelectionCount</font></code> condition.<br>
+- Add myself as a <a href="#contributors">contributor</a>.<br>
+- Add a link to <a href="#changelog">ChangeLog</a>.<br>
+- Fix some links.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.5-draft</td>
+<td align="center">2010-01-28</td>
+<td>
+- Setup a default value for <code><font size="+1">Path</font></code> parameter.<br>
+- Update <a href="#contributors">Contributors</a>.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.6-draft</td>
+<td align="center">2010-02-03</td>
+<td>
+- Add <code><font size="+1">Type</font></code> key for distinguishing Actions from Menus.<br>
+- Specifies what to do with present, but not listed, profiles.<br>
+- Specifies defaults for <code><font size="+1">TryExec</font></code>, <code><font size="+1">ShowIfRegistered</font></code>, <code><font size="+1">ShowIfTrue</font></code>, <code><font size="+1">ShowIfRunning</font></code>, <code><font size="+1">MimeTypes</font></code>, <code><font size="+1">SelectionCount</font></code>, <code><font size="+1">Schemes</font></code>, <code><font size="+1">Capabilities</font></code> keys.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.7-draft</td>
+<td align="center">2010-03-01</td>
+<td>
+- Remove <code><font size="+1">Minimized</font></code> and <code><font size="+1">Maximized</font></code> from available <code><font size="+1">ExecutionMode</font></code> modes.<br>
+- Remove <code><font size="+1">ForEach</font></code> key<br>
+- <code><font size="+1">Profiles</font></code> and <code><font size="+1">ItemsList</font></code> become dynamic<br>
+- Remove <code><font size="+1">GetItemsList</font></code> key<br>
+- Change <code><font size="+1">SelectionCount</font></code> default from "<code><font size="+1">*</font></code>" to "<code><font size="+1">&gt;0</font></code>"<br>
+- <code><font size="+1">Folders</font></code> elements may be negated<br>
+- Specify how to read a Conditions string list which contains both positive and negated elements<br>
+</td>
+
+</tr><tr valign="top">
+<td align="center">0.8-draft</td>
+<td align="center">2010-03-18</td>
+<td>
+- Update the <code><font size="+1">Profile</font></code> and <code><font size="+1">ItemsList</font></code> keys description, describing their dynamic behavior.<br>
+- Update the <code><font size="+1">Path</font></code> key description, removing the word 'first'.<br>
+- Set the <code><font size="+1">ItemsList</font></code> key as requested.<br>
+- Specify the use of wildcards in <code><font size="+1">MimeTypes</font></code>, <code><font size="+1">Basenames</font></code> and <code><font size="+1">Folders</font></code> keys.<br>
+- The <code><font size="+1">Folders</font></code> key value is now defined as a list of paths.<br>
+- Update the <code><font size="+1">Folders</font></code> key description, describing SelectionCount-based behavior.<br>
+- More precisely describes parameters expansion against multiple selection.<br>
+- Create <a href="#example-c">Appendix C</a> with an example of an action.<br>
+- Specify the format of the <code><font size="+1">SuggestedShortcut</font></code> key.<br>
+- Change to ExtensionAction and ExtensionMenu the type of actions and menus.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.9-draft</td>
+<td align="center">2010-03-25</td>
+<td>
+- Define the <code><font size="+1">TargetLocation</font></code> key.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.10-draft</td>
+<td align="center">2010-03-29</td>
+<td>
+- <code><font size="+1">Hidden</font></code> and <code><font size="+1">NoDisplay</font></code> keys are moved to <code><font size="+1">Desktop Entry</font></code> group.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.11-draft</td>
+<td align="center">2010-04-15</td>
+<td>
+- Change back the <code><font size="+1">Type</font></code> of actions (resp. menus) to "<code><font size="+1">Action</font></code>" (resp. "<code><font size="+1">Menu</font></code>").<br>
+- Change the keyword "<code><font size="+1">_SEPARATOR_</font></code>" to "<code><font size="+1">SEPARATOR</font></code>".<br>
+- Add <a href="#example-d">Appendix D</a> with an example of a menu.<br>
+- Rename the "<code><font size="+1">NoDisplay</font></code>" keyword to "<code><font size="+1">Enabled</font></code>".<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.12-draft</td>
+<td align="center">2010-06-15</td>
+<td>
+- Replace the "Same as DES" words by the exact relevant excerpt from DES, for <code><font size="+1">Hidden</font></code>, <code><font size="+1">Exec</font></code>, <code><font size="+1">StartupNotify</font></code>, <code><font size="+1">StartupWMClass</font></code>, <code><font size="+1">OnlyShowIn/NotShowIn</font></code> and <code><font size="+1">TryExec</font></code> keys.<br>
+- Change the <code><font size="+1">Capabilities</font></code>" default value from "<code><font size="+1">*;</font></code>" to the empty list.<br>
+- Specify that the <code><font size="+1">Capabilities</font></code>" conditions are ANDed.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.13-draft</td>
+<td align="center">2010-08-04</td>
+<td>
+- Slightly rewrite introduction.<br>
+- Improve consistency of the specification by replace « protocol » with « scheme », and « program » with « command ».<br>
+- Restates in relevant chapters that actions and menus may have their own set of conditions.<br>
+- Add a <a href="#hierarchy">Building the whole hierarchy</a> new chapter.<br>
+- Add <code><font size="+1">%m</font></code> and <code><font size="+1">%M</font></code> parameters.<br>
+- Better specify which parameters can be used to determine between « singular » and « plural » forms, and define the default behavior when only « irrelevant » parameters are found.<br>
+- States which value must be used in parameter expansions in the case of a singular form.<br>
+- The condition defined by the <code><font size="+1">TryExec</font></code> key evaluates to <code><font size="+1">false</font></code> if the specified file is not found or is not executable, instead of the entry being ignored.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.14-draft</td>
+<td align="center">2010-08-05</td>
+<td>
+- Remove the (non-sense) states added in the previous version, about the value to be used in parameter expansions in the case of a singular form.<br>
+- Introduce more clearly the multiple execution algorythm.<br>
+</td>
+</tr>
+
+<tr valign="top">
+<td align="center">0.15-draft</td>
+<td align="center">2010-11-23</td>
+<td>
+- Add <code><font size="+1">%o</font></code> and <code><font size="+1">%O</font></code> parameters.<br>
+</td>
+</tr>
+
+</tbody></table></div>
+
+</div>
+<!-- end content -->
+</div><!-- main -->
+</body></html>

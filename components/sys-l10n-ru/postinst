@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Saving old debconf selections of the `locales` package
+#\............................................................................./
+debconf_selections=$(debconf-get-selections | LC_ALL=C awk '$1 == "locales"')
+[ -z "$debconf_selections" ] && {
+	debcomp log -e 'unable to get debconf selections for package `locales'\'
+	exit 1
+}
+printf %s\\n "$debconf_selections" | debcomp setvar debconf_selections_locales || exit
+
+#/*****************************************************************************\
+# Setting new debconf selections of the `locales` package and reconfiguring it
+#\............................................................................./
+debconf-set-selections << EOF || exit
+locales locales/locales_to_be_generated     multiselect  ru_RU.UTF-8 UTF-8
+locales locales/default_environment_locale  select       ru_RU.UTF-8
+EOF
+dpkg-reconfigure locales || exit

@@ -1,0 +1,7 @@
+name=Service and diagnostics / Network
+name[ru]=Сервис и диагностика / Сеть
+
+# Probably the software from the `net-base` component may be required for the
+# software from this component
+depends/net-base
+after/net-base

@@ -1,0 +1,7 @@
+name=Service and diagnostics / Hardware
+name[ru]=Сервис и диагностика / Оборудование
+
+# Probably the software from the `hw-base` component may be required for the
+# software from this component.
+depends/hw-base
+after/hw-base

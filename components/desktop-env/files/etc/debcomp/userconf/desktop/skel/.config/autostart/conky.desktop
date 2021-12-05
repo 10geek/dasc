@@ -1,0 +1,4 @@
+[Desktop Entry]
+Type=Application
+Name=Conky
+Exec=/usr/local/share/dasc/libexec/desktop/start-conky

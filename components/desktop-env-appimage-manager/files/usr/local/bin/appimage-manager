@@ -1,0 +1,2454 @@
+#!/usr/bin/env sh
+#
+# AppImage Manager - a tool for installing and removing AppImage applications
+# and integrating them with the system
+#
+# Version: 1.0.0 (13/10/2021)
+#
+# Copyright (c) 2021 10geek
+#
+# Licensed under the MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+. /usr/local/share/shell/jsio.sh || exit 1
+
+err() {
+	if [ $# -gt 1 ]; then
+		printf %s\\n "$program_name: $2" >&2
+	else
+		printf %s\\n "$program_name: $1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+err_usage() {
+	[ $# -ne 0 ] && err "$@"
+	set -- "$(usage | LC_ALL=C awk -- 'BEGIN { ARGC = 1; is_usage = 0 } {
+		if(!is_usage) {
+			sub(/^[\t\n\v\f\r ]+/, "")
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				is_usage = 1
+			} else next
+		}
+		sub(/^[\t\n\v\f\r ]+/, ""); sub(/[\t\n\v\f\r ]+$/, "")
+		if($0 == "") {
+			if(is_usage == 2) exit
+			else next
+		}
+		if(is_usage == 2) {
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				sub(/^[\t\n\v\f\r ]+/, "")
+			}
+			printf("%s", ARGV[1] ": ")
+		}
+		print "usage: " $0
+		is_usage = 2
+	} END { exit exit_code }' "$program_name")"
+	[ -n "$1" ] && err "$1"
+	err "try \`$program_name --help' for more information" >&2
+		exit 1
+}
+# Usage: l10n_msg default_message [lang message] ...
+l10n_msg() {
+	l10n_msg__msg=$1; shift
+	while [ $# -gt 1 ]; do
+		case $1 in
+		$lang)
+			l10n_msg__msg=$2
+			break
+			;;
+		*_*) ;;
+		*)
+			case $lang in
+			${1}_*) l10n_msg__msg=$2;;
+			esac
+			;;
+		esac
+		shift 2
+	done
+	printf %s\\n "$l10n_msg__msg"
+}
+checkutil() {
+	unset -v checkutil__not_found_utils checkutil__util
+	checkutil__silent=0
+	checkutil__any=0
+	while [ $# -ne 0 ]; do
+		checkutil___is_arg_opt=0
+		case $1 in --)
+			shift; break; esac
+		case $1 in -s*|-*s*|-*s)
+			checkutil___is_arg_opt=1; checkutil__silent=1; esac
+		case $1 in -a*|-*a*|-*a)
+			checkutil___is_arg_opt=1; checkutil__any=1; esac
+		case $checkutil___is_arg_opt in 0)
+			break; esac
+		shift
+	done
+	set -- $*
+	while [ $# -ne 0 ]; do
+		if ! checkutil__util_path=$(command -v -- "$1") || [ -z "$checkutil__util_path" ]; then
+			checkutil__not_found_utils=$checkutil__not_found_utils' '$1
+		else case $checkutil__any in 1)
+			checkutil__util=$1
+			return 0
+		esac; fi
+		shift
+	done
+	[ -z "$checkutil__not_found_utils" ] || {
+		checkutil__not_found_utils=${checkutil__not_found_utils# }
+		[ $checkutil__silent -eq 0 ] &&
+			err "\`$(printf %s\\n "$checkutil__not_found_utils" | sed 's/ /'\'', `/g; s/\(.*\), /\1 and /')' is not found in the system; PATH=$PATH"
+		return 1
+	}
+}
+require_root() {
+	[ ":$USER_ID" = :0 ] && return
+	checkutil pkexec || exit 1
+	pkexec "$@"
+	exit
+}
+get_lock() {
+	[ -n "$1" ] || err 1 'get_lock: lock path is not specified'
+	(
+		trap '' $SIGNALS
+		flock -n "$1/pid" sh -c 'PID=$(sed -n '\''/^[1-9][0-9]*$/!b; p; q'\'' "$0/pid"); [ -n "$PID" ] && ps -Ao pid | LC_ALL=C awk '\''BEGIN { ARGC = 1 } $1 == ARGV[1] { exit 1 }'\'' "$PID" && rm -rf "$0"' "$1" 2>/dev/null
+		get_lock__i=10; while :; do
+			if mkdir "$1" 2>/dev/null; then
+				flock "$1/pid" sh -c '{ echo "$0" > "$1/pid" && [ ":$(cat "$1/pid")" = ":$0" ]; } || { echo 1; rm -rf "$1"; exit; }; echo 0' $$ "$1" 2>/dev/null |
+				LC_ALL=C awk 'BEGIN { exit_code = 2 } /^[0-9]+$/ { exit_code = $0 } END { exit exit_code }'
+				case $? in
+				1) break;;
+				2)
+					{
+						echo $$ > "$1/pid" &&
+						[ ":$(cat "$1/pid")" = :$$ ]
+					} || {
+						rm -rf "$1"
+						break
+					}
+					;;
+				esac
+				exit 0
+			elif [ -d "$1" ]; then
+				[ ":$2" = :1 ] && break
+				get_lock__i=10
+			else
+				get_lock__i=$((get_lock__i - 1))
+				[ $get_lock__i -le 0 ] && break
+			fi
+			sleep 1 2>/dev/null
+		done
+		exit 1
+	) && return
+	err "get_lock: unable to get lock \`$1'"
+	[ ":$3" = :1 ] || exit 1
+}
+release_lock() {
+	{ [ -n "$1" ] && [ -f "$1/pid" ]; } || return 0
+	(
+		trap '' $SIGNALS
+		flock "$1/pid" sh -c '[ ":$(cat "$1/pid")" = ":$0" ] && rm -rf "$1"; echo 0' $$ "$1" 2>/dev/null |
+		LC_ALL=C awk 'BEGIN { exit_code = 1 } $0 == "0" { exit_code = 0; exit } END { exit exit_code }' ||
+		{ [ ":$(cat "$1/pid" 2>/dev/null)" = :$$ ] && rm -rf "$1"; }
+	)
+}
+normalize_path() {
+	[ -n "$2" ] && [ ":$2" != :- ] && {
+		eval "$2=$(normalize_path "$1" -)"
+		return
+	}
+	LC_ALL=C awk -- 'BEGIN {
+		path = ARGV[2] "/"; if(ARGV[2] !~ /^\//) path = ARGV[1] "/" path
+		gsub(/\0/, "", path); gsub(/\/\/+/, "/", path); gsub(/\/(\.\/)+/, "/", path)
+		while(sub(/\/[^\/]+\/\.\.\//, "/", path)) { continue }
+		sub(/\/\.\.\//, "/", path)
+		if(path != "/") sub(/\/$/, "", path)
+		if(ARGV[3] != "") {
+			gsub(/\47/, "\47\134\47\47", path)
+			print "\47" path "\47"
+		} else print path
+	}' "$PWD" "$1" "$2"
+}
+get_mountpoint() {
+	LC_ALL=C df -P -- "$1" | awk 'BEGIN { exit_code = 1; cut = 5 } NR == 1 { next } {
+		while(cut) {
+			if(!sub(/[\1-\40]*[^\1-\40]+[\1-\40]*/, "")) next; cut--
+		}
+		exit_code = 0
+		print $0
+	} END { exit exit_code }'
+}
+is_mountpoint() {
+	if [ $# -gt 1 ]; then
+		[ "$(get_mountpoint "$1" 2>/dev/null && echo .)" != "$2" ]
+	else
+		[ ":$1" = :/ ] ||
+		[ "$(get_mountpoint "$1" 2>/dev/null && echo .)" != "$(eval "get_mountpoint $(normalize_path "$1/.." -) 2>/dev/null" && echo .)" ]
+	fi
+}
+waitpid() {
+	while :; do
+		wait "$1" 2>/dev/null
+		waitpid__retval=$?
+		sh -c 'trap '\'\'' '"$SIGNALS"'
+		ps -Ao ppid,pid | LC_ALL=C awk -- '\''
+			BEGIN { ARGC = 1; exit_code = 1 }
+			$2 == ARGV[2] { if($1 == ARGV[1]) exit_code = 0; exit }
+			END { exit exit_code }
+		'\'' "$PPID" "$0"' "$1" || break
+	done
+	wait "$1" 2>/dev/null
+	waitpid__last_retval=$?
+	[ $waitpid__last_retval -ne 127 ] && return $waitpid__last_retval
+	return $waitpid__retval
+}
+
+# Usage: appimage_unpack <app_image> <destination> [<mount_if_possible>] [<output_app_image_path>]
+#
+# This is an improved version of the `unpack()` function from the `appimage-exec.sh` script:
+# https://github.com/NixOS/nixpkgs/blob/master/pkgs/build-support/appimage/appimage-exec.sh
+appimage_unpack() {
+	unset -v appimage_unpack___appimage_type
+	[ -z "$4" ] && set -- "$1" "$2" "$3" "$1"
+	appimage_unpack___offset=$(LC_ALL=C readelf -hW "$1") || return 1
+
+	# https://github.com/AppImage/libappimage/blob/ca8d4b53bed5cbc0f3d0398e30806e0d3adeaaab/src/libappimage/utils/MagicBytesChecker.cpp#L45-L63
+	# https://gist.github.com/probonopd/a490ba3401b5ef7b881d5e603fa20c93
+	appimage_unpack___offset=$(
+		printf %s\\n "$appimage_unpack___offset" | LC_ALL=C awk 'BEGIN {
+			appimage_type = e_shoff = e_shentsize = e_shnum = ""
+			offset = 0
+		} {
+			pos = index($0, ":")
+			if(!pos) next
+			fname = substr($0, 1, pos - 1); $0 = substr($0, pos + 1)
+			sub(/^[\t\v\f\r ]+/, "", fname); sub(/[\t\v\f\r ]+$/, "", fname)
+			sub(/^[\t\v\f\r ]+/, ""); sub(/[\t\v\f\r ]+$/, "")
+			fname = tolower(fname)
+
+			if(fname == "magic") {
+				if($9 == "41" && $10 == "49")
+					appimage_type = tolower($11)
+				else {
+					appimage_type = "-"
+					exit
+				}
+			} else if(fname == "start of section headers")
+				e_shoff = int($1 + 0)
+			else if(fname == "size of section headers")
+				e_shentsize = int($1 + 0)
+			else if(fname == "number of section headers")
+				e_shnum = int($1 + 0)
+		} END {
+			if(appimage_type == "") exit 1
+			if(appimage_type == "02") {
+				if(e_shoff == "" || e_shentsize == "" || e_shnum == "") exit 1
+				offset = e_shoff + e_shentsize * e_shnum
+			}
+			print appimage_type, offset
+		}'
+	) || {
+		err "unable to get properties of the AppImage file \`$4'"
+		return 1
+	}
+	appimage_unpack___appimage_type=${appimage_unpack___offset%% *}
+	appimage_unpack___offset=${appimage_unpack___offset#* }
+	[ ":$appimage_unpack___appimage_type" = :- ] && {
+		err "\`$4' is not an AppImage file"
+		return 1
+	}
+	case $appimage_unpack___appimage_type in
+	01)
+		{
+			mkdir -p "$2" &&
+			tar -xf "$1" -C "$2"
+		} || return 1
+		;;
+	02)
+		if [ ":$3" = :1 ]; then
+			mkdir -p "$2" &&
+			mount -t squashfs -o loop,offset="$appimage_unpack___offset" "$1" "$2"
+		else
+			unsquashfs -q -n -d "$2" -o "$appimage_unpack___offset" "$1" &&
+			chmod go-w "$2"
+		fi || return 1
+		;;
+	# 03)
+	# 	# Get ready: https://github.com/TheAssassin/type3-runtime
+	# 	;;
+	*)
+		err "file \`$4' has an unsupported AppImage type \`$appimage_unpack___appimage_type'"
+		;;
+	esac
+}
+# Usage: download <from> <to> [<show_progress>] [<background_process>]
+download() {
+	case $3 in
+	1) ;;
+	*) [ -t 2 ] && set -- "$1" "$2" 1
+	esac
+	if checkutil -s curl; then
+		eval "curl $(
+			case $3 in
+			1) printf %s ' --progress-bar';;
+			*) printf %s ' --no-progress-meter';;
+			esac
+		)"' --max-redirs 20 --connect-timeout 10 --retry 5 --retry-connrefused -fgLo "$2" -- "$1" >&2'"$(
+			case $4 in
+			1) printf %s ' & download__pid=$!'
+			esac
+		)"
+	else
+		checkutil wget &&
+		eval "$(
+			case $3 in
+			1) ;; *)
+				case $4 in
+				1) ;; *) printf %s 'download___err=$('
+				esac
+				;;
+			esac
+			printf %s 'wget --no-verbose'
+			case $3 in
+			1) printf %s ' --show-progress'
+			esac
+			printf %s ' --tries=5 --timeout=10 --max-redirect=20 --retry-connrefused --retry-on-host-error --no-hsts --no-glob -O "$2" -- "$1"'
+			case $3 in
+			1)
+				printf %s ' >&2';;
+			*)
+				case $4 in
+				1) printf %s ' >&2';;
+				*)
+					printf %s ' 2>&1) || {
+						printf %s\\n "$download___err" >&2
+						false
+					}'
+					;;
+				esac
+				;;
+			esac
+			case $4 in
+			1) printf %s ' & download__pid=$!'
+			esac
+		)"
+	fi ||
+	err "download(): unable to download from URL \`$1'"
+}
+download__pid=
+
+SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
+eval "signal_handler__register() { trap 'EXIT_CODE=\$?; trap '\\'\\'' \$SIGNALS; signal_handler EXIT' EXIT;$(
+	LC_ALL=C awk -- 'BEGIN { for(i = 1; i < ARGC; i++) print "trap \47trap \47\134\47\134\47\47 $SIGNALS; signal_handler " ARGV[i] "; signal_handler__register\47 " ARGV[i] }' $SIGNALS
+);}"
+
+lang=$(locale | LC_ALL=C awk '{
+	if(!sub(/^[\t ]*LC_MESSAGES=/, "")) next
+	if(sub(/^"/, "")) {
+		if(!sub(/"$/, "")) next
+	} else if(sub(/^\47/, "")) {
+		if(!sub(/\47$/, "")) next
+	}
+	sub(/@.*/, "")
+	if(tolower($0) !~ /^[A-Za-z]+(_[A-Za-z]+)?\.utf-?8$/) next
+	sub(/\..*/, "")
+	print $0
+	exit
+}')
+
+
+program_name=${0##*/}
+program_icon_name=AppImage
+program_version=1.0.0
+is_gui=0
+vardir=/var/local/lib/appimage
+app_name_allowed_chars='0-9A-Za-z._-'
+case $lang in
+ru|ru_*)
+	program_full_name='Менеджер приложений AppImage'
+	program_description='Инструмент для установки и удаления приложений AppImage и их интеграции с системой'
+	;;
+*)
+	program_full_name='AppImage Application Manager'
+	program_description='A tool for installing and removing AppImage applications and integrating them with the system'
+	;;
+esac
+
+{ USER_ID=$(id -u) && [ -n "$USER_ID" ]; } ||
+    err 1 'unable to get user ID'
+
+
+case $program_name in
+*-gui)
+	is_gui=1
+	cli_program_path=${0%-*}
+	main_program_name=${cli_program_path##*/}
+esac
+
+[ $is_gui -eq 0 ] && {
+	remove_app() {
+		rm -f \
+			"$vardir/desktop/applications/$1.desktop" \
+			"$vardir/desktop/icons/hicolor/scalable/apps/$1.png" &&
+		update-desktop-database "$vardir/desktop/applications" &&
+		rm -f "$vardir/bin/$1"
+	}
+
+	usage() {
+		cat <<- EOF
+		Usage: $program_name [<options>] ... <command> [<command_arguments>] ...
+
+		Commands:
+		  install
+		  remove
+		  list
+		  unpack
+
+		Options:
+		  -v, --version  Output version information and exit
+		  -h, --help     Display this help and exit
+		EOF
+	}
+
+	case $1 in
+	--help|-h) usage; exit 0;;
+	--version|-v) printf %s\\n "$program_version"; exit 0;;
+	*)
+		while getopts '' OPT; do case $OPT in
+			?) exit 1;;
+		esac; done
+		;;
+	esac
+	shift $((OPTIND - 1))
+	OPTIND=1
+
+	[ $# -eq 0 ] &&
+		err_usage 'invalid number of arguments'
+
+	case $1 in
+	install)
+		shift
+
+		remove_appimage_contents_dir() {
+			[ -e "$vardir/tmp/appimage-contents" ] || return 0
+			{
+				! is_mountpoint "$vardir/tmp/appimage-contents" ||
+				umount -fl "$vardir/tmp/appimage-contents"
+			} &&
+			rm -rf "$vardir/tmp/appimage-contents"
+		}
+		clean_tmp() {
+			rm -f "$vardir/tmp/prepared.AppImage" &&
+			remove_appimage_contents_dir
+		}
+
+		usage() {
+			cat <<- EOF
+			Usage: $program_name [<options>] ... install [<options>] ... ([<app_name>] <app_image_location>) ...
+
+			Installs the AppImages to the system.
+
+			The <app_image_location> argument can be the path to the AppImage in the local
+			file system, or URL if the AppImage is located remotely.
+			The <app_image_location> argument must contain at least one "/" character,
+			otherwise it is treated as the <app_name> argument. The <app_name> argument
+			preceding the <app_image_location> argument specifies the name of the
+			AppImage to install, otherwise it is determined automatically, if possible.
+
+			Options:
+			  -f          Reinstall application if it is already installed
+			  -h, --help  Display this help and exit
+			EOF
+		}
+
+		reinstall_if_installed=0
+
+		case $1 in
+		--help|-h) usage; exit 0;;
+		*)
+			while getopts f OPT; do case $OPT in
+				f) reinstall_if_installed=1;;
+				?) exit 1;;
+			esac; done
+			;;
+		esac
+		shift $((OPTIND - 1))
+		OPTIND=1
+		[ $# -eq 0 ] &&
+			err_usage 'invalid number of arguments'
+
+		checkutil readelf tar unsquashfs || exit 1
+
+		eval "set -- $(
+			interrupt() {
+				[ $# -ne 0 ] && err "$1"
+				printf %s\\n '; false'
+				exit
+			}
+			i=1; last_arg_type=0
+			for arg in "$@"; do
+				case $arg in
+				(*/*)
+					case $arg in
+					(http://*|https://*|ftp://*|ftps://*)
+						printf %s\\n "\"\${$i}\"";;
+					(*)
+						normalize_path "$arg" - || interrupt;;
+					esac
+					last_arg_type=1
+					;;
+				(*)
+					[ $last_arg_type -eq 2 ] &&
+						interrupt '<app_name> argument cannot be used two or more times consecutively'
+					[ $i -eq $# ] &&
+						interrupt 'orphaned last <app_name> argument'
+					LC_ALL=C APP_NAME_ALLOWED_CHARS=$app_name_allowed_chars \
+					awk -- 'BEGIN { exit ARGV[1] !~ "^[" ENVIRON["APP_NAME_ALLOWED_CHARS"] "]+$" }' "$arg" ||
+						interrupt "\`$arg' is an invalid value for <app_name> argument"
+					printf %s\\n "\"\${$i}\""
+					last_arg_type=2
+					;;
+				esac
+				i=$((i + 1))
+			done | tr \\n ' '
+		)" || exit 1
+
+		require_root "$0" install "$@"
+
+		installation_in_progress=0
+
+		signal_handler() {
+			case $1 in
+			EXIT)
+				set -- 0
+				[ $installation_in_progress -eq 1 ] && {
+					remove_app "$app_name" || set -- 1
+				}
+				clean_tmp || set -- 1
+				release_lock "$vardir/lock"
+				[ $EXIT_CODE -eq 0 ] || exit $EXIT_CODE
+				exit $1
+				;;
+			*)
+				exit
+				;;
+			esac
+		}
+		signal_handler__register
+
+		mkdir -p \
+			"$vardir/bin" \
+			"$vardir/desktop/applications" \
+			"$vardir/desktop/icons/hicolor/scalable/apps" || exit 1
+		[ -e "$vardir/tmp" ] ||
+			mkdir -pm 700 "$vardir/tmp" ||
+			exit 1
+		get_lock "$vardir/lock"
+		clean_tmp || exit 1
+
+		unset -v app_name
+		while [ $# -ne 0 ]; do
+			case $1 in
+			*/*) app_image_location=$1;;
+			*) app_name=$1; shift; continue;;
+			esac
+
+			err "installing AppImage \`$app_image_location' ..."
+
+			case $app_image_location in
+			http://*|https://*|ftp://*|ftps://*)
+				download "$app_image_location" "$vardir/tmp/prepared.AppImage" || exit 1
+				;;
+			*)
+				[ -e "$app_image_location" ] ||
+					err 1 "file \`$app_image_location' does not exists"
+				[ -f "$app_image_location" ] ||
+					err 1 "\`$app_image_location' is not a file"
+				cp "$app_image_location" "$vardir/tmp/prepared.AppImage" || exit 1
+				;;
+			esac
+
+			appimage_unpack "$vardir/tmp/prepared.AppImage" "$vardir/tmp/appimage-contents" 1 "$app_image_location" || exit 1
+			desktop_file=$(
+				cd "$vardir/tmp/appimage-contents" &&
+				find .// ! -path .// -prune -type f -name '*.desktop'
+			) || exit 1
+			[ -n "$desktop_file" ] || desktop_file=$(
+				cd "$vardir/tmp/appimage-contents" &&
+				find .// ! -type f -name '*.desktop'
+			) || exit 1
+			desktop_file=${desktop_file##*.//}
+			case $desktop_file in
+			.desktop|*/.desktop) desktop_file=
+			esac
+			[ -z "$app_name" ] && [ -n "$desktop_file" ] && {
+				app_name=$(LC_ALL=C APP_NAME_ALLOWED_CHARS=$app_name_allowed_chars awk -- '{
+					if(!sub(/^[\t ]*Exec[\t ]*=[\t ]*/, "")) next
+					if(!match($0, /^[^\t ]+/)) next
+					$0 = substr($0, 1, RLENGTH)
+					sub(/.*\57/, "")
+					if($0 !~ "^[" ENVIRON["APP_NAME_ALLOWED_CHARS"] "]+$") next
+					if($0 == "AppRun") next
+					print $0
+					exit
+				}' "$vardir/tmp/appimage-contents/$desktop_file")
+				[ -z "$app_name" ] && {
+					LC_ALL=C APP_NAME_ALLOWED_CHARS=$app_name_allowed_chars \
+					awk -- 'BEGIN { exit ARGV[1] !~ "^(.+/)?[" ENVIRON["APP_NAME_ALLOWED_CHARS"] "]+\134.desktop$" }' "$desktop_file" && {
+						app_name=${desktop_file##*/}
+						app_name=${app_name%.desktop}
+					}
+				}
+			}
+			[ -z "$app_name" ] &&
+				err 1 "unable to determine app name for AppImage \`$app_image_location'"
+			[ -e "$vardir/bin/$app_name" ] && {
+				if [ $reinstall_if_installed -eq 0 ]; then
+					err 1 "AppImage \`$vardir/bin/$app_name' is already exists"
+				else
+					err "AppImage \`$vardir/bin/$app_name' is already exists, reinstalling ..."
+					remove_app "$app_name" || exit 1
+				fi
+			}
+			installation_in_progress=1
+			{
+				mv -f "$vardir/tmp/prepared.AppImage" "$vardir/bin/$app_name" &&
+				chmod 755 "$vardir/bin/$app_name"
+			} || exit 1
+			icon_path=$vardir/tmp/appimage-contents/.DirIcon
+			{ ! [ -f "$icon_path" ] && [ -n "$desktop_file" ]; } && {
+				icon_path=${desktop_file%.desktop}.png
+				icon_path=$vardir/tmp/appimage-contents/${icon_path##*/}
+			}
+			[ -f "$icon_path" ] || icon_path=
+			[ -z "$icon_path" ] || {
+				cp "$icon_path" "$vardir/desktop/icons/hicolor/scalable/apps/$app_name.png" &&
+				if [ -n "$desktop_file" ]; then
+					LC_ALL=C awk -- 'BEGIN {
+						app_name = ARGV[2]
+						bin_dir = ARGV[3]
+						ARGC = 2
+					} {
+						if(!sub(/^[\t ]*Exec[\t ]*=[\t ]*[^\t ]+/, "Exec=" bin_dir "/" app_name))
+							sub(/^[\t ]*Icon[\t ]*=.*/, "Icon=" app_name)
+						print $0
+					}' \
+					"$vardir/tmp/appimage-contents/$desktop_file" \
+					"$app_name" \
+					"$vardir/bin"
+				else
+					cat <<- EOF
+					[Desktop Entry]
+					Type=Application
+					Name=$app_name
+					Exec=$vardir/bin/$app_name
+					Icon=$app_name
+					Terminal=false
+					EOF
+				fi > "$vardir/desktop/applications/$app_name.desktop" &&
+				update-desktop-database "$vardir/desktop/applications"
+			} || exit 1
+			remove_appimage_contents_dir || exit 1
+
+			installation_in_progress=0
+			err "AppImage \`$app_image_location' has been successfully installed to \`$vardir/bin/$app_name'"
+			unset -v app_name
+			shift
+		done
+		;;
+	remove)
+		shift
+
+		usage() {
+			cat <<- EOF
+			Usage: $program_name [<options>] ... remove [<options>] ... <app_name> ...
+
+			Remove the AppImages from the system.
+
+			Options:
+			  -h, --help  Display this help and exit
+			EOF
+		}
+
+		case $1 in
+		--help|-h) usage; exit 0;;
+		*)
+			while getopts '' OPT; do case $OPT in
+				?) exit 1;;
+			esac; done
+			;;
+		esac
+		shift $((OPTIND - 1))
+		OPTIND=1
+		[ $# -eq 0 ] &&
+			err_usage 'invalid number of arguments'
+
+		require_root "$0" remove "$@"
+
+		while [ $# -ne 0 ]; do
+			err "removing AppImage \`$1' ..."
+			LC_ALL=C APP_NAME_ALLOWED_CHARS=$app_name_allowed_chars \
+			awk -- 'BEGIN { exit ARGV[1] !~ "^[" ENVIRON["APP_NAME_ALLOWED_CHARS"] "]+$" }' "$1" ||
+				err 1 "\`$1' is an invalid value for <app_name> argument"
+			[ -f "$vardir/bin/$1" ] ||
+				err 1 "AppImage \`$vardir/bin/$1' does not exists"
+			remove_app "$1" || exit 1
+			err "AppImage \`$1' has been removed successfully"
+			shift
+		done
+		;;
+	list)
+		shift
+
+		usage() {
+			cat <<- EOF
+			Usage: $program_name [<options>] ... list [<options>] ...
+
+			Outputs a list of AppImages installed in the system.
+
+			Options:
+			  -h, --help  Display this help and exit
+			EOF
+		}
+
+		case $1 in
+		--help|-h) usage; exit 0;;
+		*)
+			while getopts '' OPT; do case $OPT in
+				?) exit 1;;
+			esac; done
+			;;
+		esac
+		shift $((OPTIND - 1))
+		OPTIND=1
+		[ $# -eq 0 ] ||
+			err_usage 'invalid number of arguments'
+
+		cd "$vardir/bin" || exit 1
+		{
+			find .// ! -path .// -prune -type f
+			echo $?
+		} | LC_ALL=C awk -- '/^\.\57\57[0-9A-Za-z._-]+$/ {
+			print substr($0, 4)
+		} END { exit $0 }' || exit 1
+		;;
+	unpack)
+		shift
+
+		usage() {
+			cat <<- EOF
+			Usage: $program_name [<options>] ... unpack [<options>] ... <app_image_path> <destination>
+
+			Unpacks the AppImage to the <destination> directory.
+
+			Options:
+			  -h, --help  Display this help and exit
+			EOF
+		}
+
+		case $1 in
+		--help|-h) usage; exit 0;;
+		*)
+			while getopts '' OPT; do case $OPT in
+				?) exit 1;;
+			esac; done
+			;;
+		esac
+		shift $((OPTIND - 1))
+		OPTIND=1
+		[ $# -eq 2 ] ||
+			err_usage 'invalid number of arguments'
+
+		[ -f "$1" ] ||
+			err 1 "file \`$1' does not exists"
+		appimage_unpack "$1" "$2" || exit 1
+		;;
+	esac
+
+	exit 0
+}
+
+
+usage() {
+	cat <<- EOF
+	Usage: $program_name [<app_image_path>]
+
+	Options:
+	  -v, --version  Output version information and exit
+	  -h, --help     Display this help and exit
+	EOF
+}
+
+case $1 in
+--help|-h) usage; exit 0;;
+--version|-v) printf %s\\n "$program_version"; exit 0;;
+*)
+	while getopts '' OPT; do case $OPT in
+		?) exit 1;;
+	esac; done
+	;;
+esac
+shift $((OPTIND - 1))
+OPTIND=1
+
+case $# in
+0|1) ;;
+*) err_usage 'invalid number of arguments';;
+esac
+
+
+gui_dialog_err() {
+	[ $# -lt 2 ] && set -- '' "$1"
+	jsio '
+		let dialog = new Gtk.MessageDialog({
+			'"$([ -n "$1" ] && printf %s\\n "transient_for: $1,")"'
+			icon_name: ' "$program_icon_name" ',
+			message_type: Gtk.MessageType.ERROR,
+			buttons: Gtk.ButtonsType.CLOSE,
+			title: ' "$program_full_name — $(l10n_msg 'Error' ru 'Ошибка')" ',
+			text: ' "$2" '
+		});
+		dialog.run();
+		dialog.destroy();'
+}
+gui_liststore_apps_update() {
+	jsio : = '
+		let appIcons = {}, iconName, appName;
+		ui.liststore_apps.clear();
+		while((iconName = jsio.read()) != "") {
+			iconName = iconName.substring(2, iconName.lastIndexOf("."));
+			appIcons[iconName] = null;
+		}
+		while((appName = jsio.read()) != "") {
+			if(appName in appIcons) iconName = appName;
+			else iconName = "application-x-executable";
+			ui.liststore_apps.insert_with_valuesv(-1, [0, 1], [iconName, appName]);
+		}'
+	(
+		cd "$vardir/desktop/icons/hicolor/scalable/apps" &&
+		find ./ ! -path ./ -prune -type f | tr \\n \\0 | jsio__write
+	) || exit 1
+	"$cli_program_path" list | tr \\n \\0 | jsio__write
+	jsio__read; jsio__read
+}
+gui_app_install() {
+	jsio is_url= 'ui.radiobutton_install_from_url.get_active()'
+	jsio detect_app_name= 'ui.checkbutton_install_detect_app_name.get_active()'
+	unset -v err_text
+	case $is_url in
+	true)
+		jsio app_image_location= 'ui.input_url.get_text()';;
+	*)
+		jsio app_image_location= '
+			let path = ui.input_file.get_filename();
+			if(!path) path = "";
+			path;';;
+	esac
+	app_image_location=$(LC_ALL=C awk -- 'BEGIN {
+		sub(/^[\t\n\v\f\r ]+/, "", ARGV[1])
+		sub(/[\t\n\v\f\r ]+$/, "", ARGV[1])
+		print ARGV[1]
+	}' "$app_image_location")
+	[ -n "$app_image_location" ] ||
+		err_text=$(l10n_msg 'Application location path is not specified' ru 'Не указан путь к местоположению приложения')
+	[ -n "$err_text" ] || case $is_url in
+	true)
+		case $app_image_location in
+		http://*|https://*|ftp://*|ftps://*) ;;
+		*) false;;
+		esac
+		;;
+	*)
+		[ -f "$app_image_location" ]
+		;;
+	esac ||
+		err_text="$(l10n_msg 'Invalid application location path' ru 'Неверный путь к местоположению приложения'): \"$app_image_location\""
+	[ -n "$err_text" ] || case $detect_app_name in
+	true) ;;
+	*)
+		jsio app_name= 'ui.input_install_app_name.get_text()'
+		app_name=$(LC_ALL=C awk -- 'BEGIN {
+			sub(/^[\t\n\v\f\r ]+/, "", ARGV[1])
+			sub(/[\t\n\v\f\r ]+$/, "", ARGV[1])
+			print ARGV[1]
+		}' "$app_name")
+		[ -n "$app_name" ] ||
+			err_text=$(l10n_msg 'Application name is not specified' ru 'Не указано имя приложения')
+		[ -n "$err_text" ] ||
+			LC_ALL=C APP_NAME_ALLOWED_CHARS=$app_name_allowed_chars \
+			awk -- 'BEGIN { exit ARGV[1] !~ "^[" ENVIRON["APP_NAME_ALLOWED_CHARS"] "]+$" }' "$app_name" ||
+				err_text="$(l10n_msg 'Invalid application name. The application name must contain only the following characters' ru 'Некорректное имя приложения. Имя приложения должно содержать только следующие символы'): $app_name_allowed_chars"
+		[ -n "$app_name" ] || ! [ -f "$vardir/bin/$app_name" ] ||
+			err_text="$(l10n_msg 'An application with this name is already exists' ru 'Приложение с таким именем уже существует')"
+		;;
+	esac
+	[ -n "$err_text" ] && {
+		gui_dialog_err ui.win_install "$err_text"
+		jsio 'ret()'; return 1
+	}
+	jsio '
+		ui.container_install_select.hide();
+		ui.container_install_progress.show();
+		ui.win_install_button_ok.set_sensitive(false);'
+	jsio '
+		let app_image_location = GLib.markup_escape_text(' "$app_image_location" ', -1);
+		ui.label_install_text.set_markup(' "$(l10n_msg 'Installing application "' ru 'Установка приложения «')<b>" ' + app_image_location + ' "</b>$(l10n_msg '"' ru '»') …" ');'
+	case $is_url in
+	true)
+		mkdir -p "$HOME/.cache/$main_program_name" || exit 1
+		jsio '
+			let pid;
+			let error_dialog_title = ' "$program_full_name — $(l10n_msg 'Error while downloading file' ru 'Ошибка при загрузке файла')" ';
+			let error_text_exit_code = ' "$(l10n_msg 'Exit code' ru 'Код завершения')" ';
+			ui.progressbar_install_progress.show();
+			ui.win_install_button_close.set_sensitive(false);
+			jsio.callbackOverrideAll = true;
+			jsio.callbackOverride["install_cancel"] = function() {
+				if(pid === undefined) return true;
+				let [ok, stdout, stderr, status] = GLib.spawn_sync(null, ["kill", "-TERM", pid], null, GLib.SpawnFlags.SEARCH_PATH, null);
+				if(!ok) return true;
+				jsio.callbackOverride["install_cancel"] = true;
+				return true;
+			}
+			jsio.readAsync((result) => {
+				if(result == "") {
+					delete jsio.callbackOverrideAll;
+					delete jsio.callbackOverride["install_cancel"];
+					let child_exit_code = parseInt(jsio.read());
+					let err_text = jsio.read();
+					if(child_exit_code) {
+						if(child_exit_code <= 128) {
+							let dialog = new Gtk.MessageDialog({
+								transient_for: ui.win_install,
+								message_type: Gtk.MessageType.ERROR,
+								buttons: Gtk.ButtonsType.CLOSE,
+								title: error_dialog_title,
+								text: err_text + "\n" + error_text_exit_code + ": " + child_exit_code
+							});
+							dialog.run();
+							dialog.destroy();
+						}
+						ui.container_install_progress.hide();
+						ui.label_install_text.set_text("");
+						ui.progressbar_install_progress.hide();
+						ui.progressbar_install_progress.set_fraction(0);
+						ui.container_install_select.show();
+						ui.win_install_button_ok.set_sensitive(true);
+						ui.win_install_button_close.set_sensitive(true);
+					} else jsio.handler();
+					return false;
+				}
+				if(pid === undefined) {
+					pid = result;
+					ui.win_install_button_close.set_sensitive(true);
+					return true;
+				}
+				ui.progressbar_install_progress.set_fraction(result / 100);
+				return true;
+			});
+			ret();'
+		get_lock "$HOME/.cache/$main_program_name/download-lock"
+		remove_download_on_exit=1
+		{
+			signal_handler() {
+				case $1 in
+				EXIT) ;;
+				*) kill -TERM "$download__pid" 2>/dev/null;;
+				esac
+			}
+			signal_handler__register
+			download "$app_image_location" "$HOME/.cache/$main_program_name/download.AppImage" 1 1 2>&1
+			printf %s\\n "pid $download__pid"
+			waitpid "$download__pid"
+			printf '\n%s\n' "exit_code $?"
+		} | LC_ALL=C gawk '
+		function jsio__write(string) {
+			printf("%s", string)
+			if(system("printf \\\\0")) exit 1
+		}
+		BEGIN { RS = "[\r\n]"; state = child_exit_code = 0 } {
+			if(!state) {
+				if(NF != 2 || $1 != "pid") next
+				jsio__write($2)
+				jsio__write(0)
+				percents_last = 0
+				state = 1
+			}
+			if(!match($0, /(0|[1-9][0-9]*)([,.][0-9]+)?%/)) {
+				if(NF == 2 && $1 == "exit_code") {
+					child_exit_code = $2
+					exit
+				}
+				if($0 != "") last_line = $0
+				next
+			}
+			percents = substr($0, RSTART, RLENGTH - 1)
+			sub(/[,.].*/, "", percents)
+			percents += 0
+			if(percents > 100) percents = 100
+			if(percents == percents_last || (percents_last == 0 && percents == 100)) next
+			percents_last = percents
+			jsio__write(percents)
+		} END {
+			jsio__write(100)
+			jsio__write("")
+			jsio__write(child_exit_code)
+			jsio__write(last_line)
+			if(child_exit_code) exit 10
+		}' >&"$jsio__fd_stdin" ||
+		case $? in
+		10)
+			rm -f "$HOME/.cache/$main_program_name/download.AppImage"
+			remove_download_on_exit=0
+			release_lock "$HOME/.cache/$main_program_name/download-lock"
+			return 1
+			;;
+		*) exit 1;;
+		esac
+		app_image_location=$HOME/.cache/$main_program_name/download.AppImage
+		jsio '
+			ui.progressbar_install_progress.hide();
+			ui.progressbar_install_progress.set_fraction(0);'
+	esac
+	jsio '
+		ui.spinner_install_progress.show();
+		jsio.callbackOverrideAll = true;
+		ui.win_install_button_ok.set_sensitive(false);
+		ui.win_install_button_close.set_sensitive(false);
+		jsio.readAsync(() => {
+			jsio.handler();
+			return false;
+		});
+		ret();'
+	command='"$cli_program_path" install --'
+	case $detect_app_name in
+	true) ;;
+	*) command=$command' "$app_name"';;
+	esac
+	command=$command' "$app_image_location"'
+	err_text=$(eval "$command" 2>&1)
+	exit_code=$?
+	case $is_url in
+	true)
+		rm -f "$HOME/.cache/$main_program_name/download.AppImage"
+		remove_download_on_exit=0
+		release_lock "$HOME/.cache/$main_program_name/download-lock"
+	esac
+	jsio__write ''
+	jsio 'delete jsio.callbackOverrideAll'
+	[ $exit_code -eq 0 ] || {
+		gui_dialog_err ui.win_install "$err_text"
+		jsio '
+			ui.container_install_progress.hide();
+			ui.label_install_text.set_text("");
+			ui.spinner_install_progress.hide();
+			ui.container_install_select.show();
+			ui.win_install_button_ok.set_sensitive(true);
+			ui.win_install_button_close.set_sensitive(true);
+			ret();'
+		return 1
+	}
+	return 0
+}
+gui_win_install_reset() {
+	jsio '
+		ui.win_install.hide();
+		ui.container_install_progress.hide();
+		ui.label_install_text.set_text("");
+		ui.progressbar_install_progress.hide();
+		ui.progressbar_install_progress.set_fraction(0);
+		ui.spinner_install_progress.hide();
+		ui.container_install_select.show();
+		ui.radiobutton_install_from_file.set_active(true);
+		ui.input_file.set_sensitive(true);
+		ui.input_url.set_sensitive(false);
+		ui.input_file.unselect_all();
+		ui.input_url.set_text("");
+		ui.checkbutton_install_detect_app_name.set_active(true);
+		ui.input_install_app_name.set_text("");
+		ui.win_install_button_ok.set_sensitive(true);
+		ui.win_install_button_close.set_sensitive(true);'
+}
+
+remove_download_on_exit=0
+
+
+[ -f /etc/profile.d/appimage.sh ] && . /etc/profile.d/appimage.sh
+
+signal_handler() {
+	case $1 in
+	EXIT)
+		set -- 0
+		[ $remove_download_on_exit -eq 0 ] ||
+			rm -f "$HOME/.cache/$main_program_name/download.AppImage"
+		release_lock "$HOME/.cache/$main_program_name/download-lock"
+		jsio__exit || set -- 1
+		[ $EXIT_CODE -eq 0 ] && EXIT_CODE=$1
+		exit $EXIT_CODE
+		;;
+	*) exit;;
+	esac
+}
+signal_handler__register
+
+checkutil gawk || exit 1
+checkutil -a gjs cjs || exit 1
+jsio__init "$checkutil__util" 6 7 || exit 1
+
+jsio 'imports.gi.versions.Gtk = "3.0"'
+jsio 'this.Gtk = imports.gi.Gtk'
+jsio 'this.Gdk = imports.gi.Gdk'
+jsio 'this.GLib = imports.gi.GLib'
+
+jsio 'Gtk.init(null)'
+jsio 'this.ui = {}'
+
+jsio : = 'this.builder = Gtk.Builder.new_from_string(jsio.read(), -1)'
+jsio__write <<- EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk+" version="3.0"/>
+  <object class="GtkAccelGroup" id="accelgroup_main"/>
+  <object class="GtkImage" id="img_button_install">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-add</property>
+  </object>
+  <object class="GtkImage" id="img_button_launch">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-execute</property>
+  </object>
+  <object class="GtkDialog" id="win_launch">
+    <property name="can_focus">False</property>
+    <property name="border_width">5</property>
+    <property name="title" translatable="yes">$program_full_name — $(l10n_msg 'Launching an application' ru 'Запуск приложения')</property>
+    <property name="modal">True</property>
+    <property name="default_width">480</property>
+    <property name="icon_name">$program_icon_name</property>
+    <property name="type_hint">dialog</property>
+    <child type="titlebar">
+      <placeholder/>
+    </child>
+    <child internal-child="vbox">
+      <object class="GtkBox">
+        <property name="can_focus">False</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <child internal-child="action_area">
+          <object class="GtkButtonBox">
+            <property name="can_focus">False</property>
+            <property name="margin_top">10</property>
+            <property name="layout_style">expand</property>
+            <child>
+              <object class="GtkButton" id="win_launch_button_launch">
+                <property name="label" translatable="yes">$(l10n_msg 'Launch' ru 'Запустить')</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="image">img_button_launch</property>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="win_launch_button_install">
+                <property name="label" translatable="yes">$(l10n_msg 'Install' ru 'Установить')</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="image">img_button_install</property>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="win_launch_button_close">
+                <property name="label">gtk-close</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <child>
+              <object class="GtkImage" id="image_launch_icon">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="valign">start</property>
+                <property name="margin_right">5</property>
+                <property name="icon_name">$program_icon_name</property>
+                <property name="icon_size">6</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="hexpand">True</property>
+                <property name="orientation">vertical</property>
+                <child>
+                  <object class="GtkLabel" id="label_launch_text">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="wrap">True</property>
+                    <property name="wrap_mode">word-char</property>
+                    <property name="xalign">0</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="label" translatable="yes">$(
+                        echo
+                        l10n_msg 'You can run the application without installing it. To do this, click "&lt;b&gt;Launch&lt;/b&gt;".' ru 'Вы можете запустить приложение без установки. Для этого нажмите «&lt;b&gt;Запустить&lt;/b&gt;».'
+                        echo
+                        l10n_msg 'If you want to make the application available to all users in the system, add it to the applications menu and set file associations, click "&lt;b&gt;Install&lt;/b&gt;".' ru 'Если вы хотите сделать приложение доступным для всех пользователей в системе, добавить его в меню приложений и установить ассоциации файлов, нажмите «&lt;b&gt;Установить&lt;/b&gt;».'
+                        echo
+                        l10n_msg 'Your computer and personal data may be vulnerable to a breach when running apps from unknown sources. If you do not trust this application, click "&lt;b&gt;Close&lt;/b&gt;".' ru 'Ваш компьютер и личные данные могут быть уязвимы для взлома при запуске приложений из неизвестных источников. Если вы не доверяете этому приложению, нажмите «&lt;b&gt;Закрыть&lt;/b&gt;».'
+                    )</property>
+                    <property name="use_markup">True</property>
+                    <property name="wrap">True</property>
+                    <property name="wrap_mode">word-char</property>
+                    <property name="width_chars">50</property>
+                    <property name="xalign">0</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkImage" id="img_menu_add">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-add</property>
+  </object>
+  <object class="GtkImage" id="img_menu_delete">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-delete</property>
+  </object>
+  <object class="GtkImage" id="img_menu_iconview_apps_launch">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-execute</property>
+  </object>
+  <object class="GtkMenu" id="menu_iconview_apps">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <child>
+      <object class="GtkImageMenuItem" id="menu_iconview_apps_launch">
+        <property name="label" translatable="yes">$(l10n_msg 'Launch' ru 'Запустить')</property>
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="image">img_menu_iconview_apps_launch</property>
+        <property name="use_stock">False</property>
+      </object>
+    </child>
+    <child>
+      <object class="GtkImageMenuItem" id="menu_iconview_apps_remove">
+        <property name="label">gtk-delete</property>
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="use_underline">True</property>
+        <property name="use_stock">True</property>
+      </object>
+    </child>
+  </object>
+  <object class="GtkImage" id="img_menu_launch">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-execute</property>
+  </object>
+  <object class="GtkImage" id="img_menu_refresh">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-refresh</property>
+  </object>
+  <object class="GtkListStore" id="liststore_apps">
+    <columns>
+      <!-- column-name icon_name -->
+      <column type="gchararray"/>
+      <!-- column-name app_name -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
+  <object class="GtkApplicationWindow" id="win_main">
+    <property name="can_focus">False</property>
+    <property name="title" translatable="yes">$program_full_name</property>
+    <property name="default_width">556</property>
+    <property name="default_height">500</property>
+    <property name="icon_name">$program_icon_name</property>
+    <child type="titlebar">
+      <placeholder/>
+    </child>
+    <child>
+      <object class="GtkBox">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkMenuBar">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <child>
+              <object class="GtkMenuItem">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label" translatable="yes">$(l10n_msg '_File' ru '_Файл')</property>
+                <property name="use_underline">True</property>
+                <child type="submenu">
+                  <object class="GtkMenu">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <child>
+                      <object class="GtkImageMenuItem" id="menu_item_refresh">
+                        <property name="label" translatable="yes">$(l10n_msg 'Update application list' ru 'Обновить список приложений')</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="image">img_menu_refresh</property>
+                        <property name="use_stock">False</property>
+                        <accelerator key="F5" signal="activate"/>
+                        <accelerator key="r" signal="activate" modifiers="GDK_CONTROL_MASK"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkSeparatorMenuItem">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkImageMenuItem" id="menu_item_quit">
+                        <property name="label">gtk-quit</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="use_underline">True</property>
+                        <property name="use_stock">True</property>
+                        <property name="accel_group">accelgroup_main</property>
+                        <accelerator key="q" signal="activate" modifiers="GDK_CONTROL_MASK"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuItem">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label" translatable="yes">$(l10n_msg '_Application' ru '_Приложение')</property>
+                <property name="use_underline">True</property>
+                <child type="submenu">
+                  <object class="GtkMenu">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <child>
+                      <object class="GtkImageMenuItem" id="menu_item_launch">
+                        <property name="label" translatable="yes">$(l10n_msg 'Launch' ru 'Запустить')</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="use_underline">True</property>
+                        <property name="image">img_menu_launch</property>
+                        <property name="use_stock">False</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkImageMenuItem" id="menu_item_install">
+                        <property name="label" translatable="yes">$(l10n_msg '_Install' ru '_Установить')</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="use_underline">True</property>
+                        <property name="image">img_menu_add</property>
+                        <property name="use_stock">False</property>
+                        <accelerator key="o" signal="activate" modifiers="GDK_CONTROL_MASK"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkImageMenuItem" id="menu_item_remove">
+                        <property name="label" translatable="yes">$(l10n_msg '_Remove' ru '_Удалить')</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="use_underline">True</property>
+                        <property name="image">img_menu_delete</property>
+                        <property name="use_stock">False</property>
+                        <accelerator key="Delete" signal="activate"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuItem">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label" translatable="yes">$(l10n_msg '_Help' ru '_Справка')</property>
+                <property name="use_underline">True</property>
+                <child type="submenu">
+                  <object class="GtkMenu">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <child>
+                      <object class="GtkImageMenuItem" id="menu_item_about">
+                        <property name="label">gtk-about</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="use_underline">True</property>
+                        <property name="use_stock">True</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkToolbar">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="toolbar_style">both</property>
+            <child>
+              <object class="GtkToolButton" id="tool_button_install">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label" translatable="yes">$(l10n_msg 'Install' ru 'Установить')</property>
+                <property name="use_underline">True</property>
+                <property name="stock_id">gtk-add</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="homogeneous">True</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkToolButton" id="tool_button_remove">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label" translatable="yes">$(l10n_msg 'Remove' ru 'Удалить')</property>
+                <property name="use_underline">True</property>
+                <property name="stock_id">gtk-delete</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="homogeneous">True</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkSeparatorToolItem">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="homogeneous">True</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkToolButton" id="tool_button_quit">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label" translatable="yes">$(l10n_msg 'Quit' ru 'Выйти')</property>
+                <property name="use_underline">True</property>
+                <property name="stock_id">gtk-quit</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="homogeneous">True</property>
+              </packing>
+            </child>
+            <style>
+              <class name="primary-toolbar"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="app_list">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkScrolledWindow">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="border_width">10</property>
+                <property name="shadow_type">in</property>
+                <child>
+                  <object class="GtkIconView" id="iconview_apps">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="has_focus">True</property>
+                    <property name="margin">6</property>
+                    <property name="selection_mode">multiple</property>
+                    <property name="model">liststore_apps</property>
+                    <child>
+                      <object class="GtkCellRendererPixbuf">
+                        <property name="stock_size">5</property>
+                      </object>
+                      <attributes>
+                        <attribute name="icon-name">0</attribute>
+                      </attributes>
+                    </child>
+                    <child>
+                      <object class="GtkCellRendererText">
+                        <property name="xalign">0.50999999046325684</property>
+                        <property name="wrap_width">100</property>
+                      </object>
+                      <attributes>
+                        <attribute name="text">1</attribute>
+                      </attributes>
+                    </child>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkDialog" id="win_install">
+    <property name="can_focus">False</property>
+    <property name="border_width">5</property>
+    <property name="title" translatable="yes">$program_full_name — $(l10n_msg 'Installing applications' ru 'Установка приложения')</property>
+    <property name="resizable">False</property>
+    <property name="modal">True</property>
+    <property name="default_width">480</property>
+    <property name="icon_name">$program_icon_name</property>
+    <property name="type_hint">dialog</property>
+    <child type="titlebar">
+      <placeholder/>
+    </child>
+    <child internal-child="vbox">
+      <object class="GtkBox">
+        <property name="can_focus">False</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <child internal-child="action_area">
+          <object class="GtkButtonBox">
+            <property name="can_focus">False</property>
+            <property name="margin_top">5</property>
+            <property name="layout_style">end</property>
+            <child>
+              <object class="GtkButton" id="win_install_button_close">
+                <property name="label">gtk-cancel</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="win_install_button_ok">
+                <property name="label">gtk-ok</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+                <accelerator key="Return" signal="clicked"/>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="container_install_progress">
+            <property name="can_focus">False</property>
+            <property name="no_show_all">True</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel" id="label_install_text">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="margin_bottom">10</property>
+                <property name="ellipsize">middle</property>
+                <property name="max_width_chars">1</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkProgressBar" id="progressbar_install_progress">
+                <property name="can_focus">False</property>
+                <property name="no_show_all">True</property>
+                <property name="show_text">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkSpinner" id="spinner_install_progress">
+                <property name="width_request">32</property>
+                <property name="height_request">32</property>
+                <property name="can_focus">False</property>
+                <property name="no_show_all">True</property>
+                <property name="active">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="container_install_select">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkGrid" id="container_install_select_source">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="row_spacing">5</property>
+                <property name="column_spacing">5</property>
+                <child>
+                  <object class="GtkRadioButton" id="radiobutton_install_from_file">
+                    <property name="label" translatable="yes">$(l10n_msg 'From file' ru 'Из файла')</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">False</property>
+                    <property name="active">True</property>
+                    <property name="draw_indicator">True</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkFileChooserButton" id="input_file">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="hexpand">True</property>
+                    <property name="title" translatable="yes">$(l10n_msg 'Select AppImage file' ru 'Выбрать файл AppImage') …</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkRadioButton" id="radiobutton_install_from_url">
+                    <property name="label" translatable="yes">$(l10n_msg 'From URL' ru 'Из URL')</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">False</property>
+                    <property name="active">True</property>
+                    <property name="draw_indicator">True</property>
+                    <property name="group">radiobutton_install_from_file</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkEntry" id="input_url">
+                    <property name="name">input_url</property>
+                    <property name="visible">True</property>
+                    <property name="sensitive">False</property>
+                    <property name="can_focus">True</property>
+                    <property name="hexpand">True</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkFrame">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label_xalign">0</property>
+                <property name="shadow_type">in</property>
+                <child>
+                  <object class="GtkBox">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="border_width">5</property>
+                    <property name="orientation">vertical</property>
+                    <child>
+                      <object class="GtkCheckButton" id="checkbutton_install_detect_app_name">
+                        <property name="label" translatable="yes">$(l10n_msg 'Detect automatically' ru 'Определить автоматически')</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="receives_default">False</property>
+                        <property name="active">True</property>
+                        <property name="draw_indicator">True</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkBox" id="container_install_app_name">
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can_focus">False</property>
+                        <property name="spacing">5</property>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="label" translatable="yes">$(l10n_msg 'Application name' ru 'Имя приложения'):</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkEntry" id="input_install_app_name">
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="hexpand">True</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                  </object>
+                </child>
+                <child type="label">
+                  <object class="GtkLabel">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="margin_top">5</property>
+                    <property name="label" translatable="yes">$(l10n_msg 'Application name' ru 'Имя приложения')</property>
+                    <attributes>
+                      <attribute name="weight" value="bold"/>
+                    </attributes>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkDialog" id="win_remove">
+    <property name="can_focus">False</property>
+    <property name="border_width">5</property>
+    <property name="title" translatable="yes">$program_full_name — $(l10n_msg 'Removing applications' ru 'Удаление приложений')</property>
+    <property name="modal">True</property>
+    <property name="default_width">480</property>
+    <property name="icon_name">$program_icon_name</property>
+    <property name="type_hint">dialog</property>
+    <child type="titlebar">
+      <placeholder/>
+    </child>
+    <child internal-child="vbox">
+      <object class="GtkBox">
+        <property name="can_focus">False</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <child internal-child="action_area">
+          <object class="GtkButtonBox">
+            <property name="can_focus">False</property>
+            <property name="margin_top">5</property>
+            <property name="layout_style">end</property>
+            <child>
+              <object class="GtkButton" id="win_remove_button_close">
+                <property name="label">gtk-close</property>
+                <property name="visible">True</property>
+                <property name="sensitive">False</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+                <accelerator key="Return" signal="activate"/>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <child>
+              <object class="GtkImage" id="image_remove_error_icon">
+                <property name="can_focus">False</property>
+                <property name="valign">start</property>
+                <property name="margin_right">5</property>
+                <property name="stock">gtk-dialog-error</property>
+                <property name="icon_size">6</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="margin_left">5</property>
+                <property name="hexpand">True</property>
+                <property name="orientation">vertical</property>
+                <child>
+                  <object class="GtkLabel" id="label_remove_text">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="margin_bottom">10</property>
+                    <property name="ellipsize">middle</property>
+                    <property name="max_width_chars">1</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkSpinner" id="spinner_remove_progress">
+                    <property name="width_request">32</property>
+                    <property name="height_request">32</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkExpander">
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="margin_top">5</property>
+            <child>
+              <object class="GtkScrolledWindow">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="margin_top">5</property>
+                <property name="shadow_type">in</property>
+                <child>
+                  <object class="GtkTextView" id="textview_remove_details">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="vexpand">True</property>
+                    <property name="border_width">5</property>
+                    <property name="editable">False</property>
+                    <property name="wrap_mode">word-char</property>
+                    <property name="cursor_visible">False</property>
+                    <property name="monospace">True</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="label">
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label" translatable="yes">$(l10n_msg 'Details' ru 'Подробности')</property>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">3</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>
+EOF
+jsio__read; jsio__read
+
+jsio '[
+	"win_install",
+	"container_install_progress",
+	"progressbar_install_progress",
+	"spinner_install_progress",
+	"container_install_select",
+	"container_install_select_source",
+	"radiobutton_install_from_file",
+	"radiobutton_install_from_url",
+	"input_file",
+	"input_url",
+	"checkbutton_install_detect_app_name",
+	"container_install_app_name",
+	"input_install_app_name",
+	"win_install_button_ok",
+	"win_install_button_close",
+	"label_install_text"
+].forEach((id) => ui[id] = builder.get_object(id))'
+
+jsio '
+	ui.win_install.connect("delete-event", jsio.callback("install_cancel"));
+	ui.win_install_button_ok.connect("clicked", jsio.callback("install"));
+	ui.win_install_button_close.connect("clicked", jsio.callback("install_cancel"));
+	ui.radiobutton_install_from_file.connect("toggled", () => {
+		ui.input_file.set_sensitive(true);
+		ui.input_url.set_sensitive(false);
+	});
+	ui.radiobutton_install_from_url.connect("toggled", () => {
+		ui.input_file.set_sensitive(false);
+		ui.input_url.set_sensitive(true);
+	});
+
+	let filter = new Gtk.FileFilter();
+	filter.set_name("AppImage");
+	filter.add_mime_type("application/x-iso9660-appimage");
+	filter.add_mime_type("application/x-appimage");
+	filter.add_mime_type("application/vnd.appimage");
+	ui.input_file.add_filter(filter);
+
+	filter = new Gtk.FileFilter();
+	filter.set_name(' "$(l10n_msg 'All files' ru 'Все файлы')" ');
+	filter.add_pattern("*");
+	ui.input_file.add_filter(filter);
+
+	ui.checkbutton_install_detect_app_name.connect("toggled", () => {
+		ui.container_install_app_name.set_sensitive(!ui.checkbutton_install_detect_app_name.get_active());
+	});'
+
+[ $# -ne 0 ] && {
+	[ -f "$1" ] || {
+		gui_dialog_err "$(l10n_msg 'File "' ru 'Файл «')$1$(l10n_msg '" does not exist' ru '» не существует')"
+		exit 1
+	}
+
+	jsio '[
+		"win_launch",
+		"label_launch_text",
+		"win_launch_button_launch",
+		"win_launch_button_install",
+		"win_launch_button_close"
+	].forEach((id) => ui[id] = builder.get_object(id))'
+
+	jsio '
+		ui.win_launch.connect("delete-event", () => Gtk.main_quit());
+		ui.win_launch_button_launch.connect("clicked", jsio.callback("app_launch"));
+		ui.win_launch_button_install.connect("clicked", jsio.callback("win_install_show"));
+		ui.win_launch_button_close.connect("clicked", () => Gtk.main_quit());'
+
+	jsio '
+		let app_name = GLib.markup_escape_text(' "${1##*/}" ', -1);
+		ui.label_launch_text.set_markup(' "$(l10n_msg 'Choose the action you want to perform with the "' ru 'Выберите действие, которое вы хотите выполнить с приложением «')<b>" ' + app_name + ' "</b>$(l10n_msg '" application' ru '»')." ');'
+
+	jsio 'ui.win_launch.show_all()'
+
+	jsio : = 'Gtk.main()'
+	while jsio__read event_name; do
+		case $event_name in
+		app_launch)
+			{
+				err_text=$(checkutil setsid 2>&1) &&
+				err_text=$(chmod -- +x "$1" 2>&1)
+			} || {
+				gui_dialog_err ui.win_launch "$err_text"
+				jsio 'ret()'; continue
+			}
+			(setsid -- "$1" &)
+			exit 0
+			;;
+		win_install_show)
+			jsio '
+				ui.win_install.set_transient_for(ui.win_launch);
+				ui.input_file.set_filename(' "$1" ');
+				ui.input_install_app_name.set_text(' "$(
+					LC_ALL=C awk -- 'BEGIN {
+						sub(/\.[Aa]pp[Ii]mage$/, "", ARGV[1])
+						sub(/[0-9]+\.[0-9].*/, "", ARGV[1])
+						sub(/[_-]([0-9]+|[A-Za-z0-9]+(32|64|86))[._-].*/, "", ARGV[1])
+						if(match(ARGV[1], /[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?/))
+							print substr(ARGV[1], RSTART, RLENGTH)
+					}' "${1##*/}"
+				)" ');
+				ui.container_install_select_source.set_no_show_all(true);
+				ui.container_install_select_source.hide();
+				ui.win_install.show_all();'
+			;;
+		install)
+			gui_app_install || continue
+			jsio '
+				ui.win_install.hide();
+				ui.win_launch.hide();
+				let app_name = GLib.markup_escape_text(' "${1##*/}" ', -1);
+				let dialog = new Gtk.MessageDialog({
+					icon_name: ' "$program_icon_name" ',
+					message_type: Gtk.MessageType.INFO,
+					buttons: Gtk.ButtonsType.CLOSE,
+					title: ' "$program_full_name — $(l10n_msg 'Installing application' ru 'Установка приложения')" ',
+					text: ' "$(l10n_msg 'Application "' ru 'Приложение «')<b>" ' + app_name + ' "</b>$(l10n_msg '" has been successfully installed' ru '» успешно установлено')" ',
+					use_markup: true
+				});
+				dialog.run();
+				dialog.destroy();'
+			exit 0
+			;;
+		install_cancel)
+			gui_win_install_reset
+			jsio 'ret(true)'; continue
+			;;
+		'')
+			jsio__read; break;;
+		esac
+		jsio 'ret()'
+	done
+
+	exit 0
+}
+
+jsio '[
+	"liststore_apps",
+	"menu_iconview_apps",
+	"menu_iconview_apps_launch",
+	"menu_iconview_apps_remove",
+
+	"win_main",
+	"menu_item_refresh",
+	"menu_item_launch",
+	"menu_item_install",
+	"tool_button_install",
+	"menu_item_remove",
+	"tool_button_remove",
+	"menu_item_about",
+	"menu_item_quit",
+	"tool_button_quit",
+	"iconview_apps",
+
+	"win_remove",
+	"win_remove_button_close",
+	"image_remove_error_icon",
+	"label_remove_text",
+	"spinner_remove_progress",
+	"textview_remove_details"
+].forEach((id) => ui[id] = builder.get_object(id))'
+
+jsio '
+	ui.menu_iconview_apps_launch.connect("activate", jsio.callback("app_launch"));
+	ui.menu_iconview_apps_remove.connect("activate", jsio.callback("app_remove"));
+
+	ui.win_main.connect("delete-event", () => Gtk.main_quit());
+	ui.menu_item_refresh.connect("activate", jsio.callback("liststore_apps_update"));
+	ui.menu_item_launch.connect("activate", jsio.callback("app_launch"));
+	ui.menu_item_install.connect("activate", jsio.callback("win_install_show"));
+	ui.tool_button_install.connect("clicked", jsio.callback("win_install_show"));
+	ui.menu_item_remove.connect("activate", jsio.callback("app_remove"));
+	ui.tool_button_remove.connect("clicked", jsio.callback("app_remove"));
+	ui.menu_item_about.connect("activate", jsio.callback("about"));
+	ui.menu_item_quit.connect("activate", () => Gtk.main_quit());
+	ui.tool_button_quit.connect("clicked", () => Gtk.main_quit());
+	ui.iconview_apps.connect("activate-cursor-item", jsio.callback("app_launch"));
+	ui.iconview_apps.connect("button-press-event", (widget, event) => {
+		function get_path() {
+			let coords = event.get_coords();
+			return ui.iconview_apps.get_path_at_pos(coords[1], coords[2]);
+		}
+		let event_type = event.get_event_type();
+		let event_button = event.get_button()[1];
+		if(event_type == Gdk.EventType["2BUTTON_PRESS"] && event_button == 1) {
+			if(!get_path()) return;
+			ui.iconview_apps.emit("activate-cursor-item");
+		} else if(event_type == Gdk.EventType.BUTTON_PRESS && event_button == 3) {
+			let path = get_path();
+			if(!(path && ui.iconview_apps.path_is_selected(path))) {
+				ui.iconview_apps.unselect_all();
+				if(path) ui.iconview_apps.select_path(path);
+			}
+			if(path) {
+				ui.menu_iconview_apps.show_all();
+				ui.menu_iconview_apps.popup_at_pointer(null);
+			}
+		}
+	});
+
+	ui.textview_remove_details.connect("size-allocate", () => {
+		let buf = ui.textview_remove_details.get_buffer();
+		ui.textview_remove_details.scroll_to_iter(buf.get_iter_at_line(buf.get_line_count()), 0, true, 0.5, 0.5);
+	});
+	ui.win_remove.connect("delete-event", jsio.callback("win_remove_close"));
+	ui.win_remove_button_close.connect("clicked", jsio.callback("win_remove_close"));'
+
+gui_liststore_apps_update
+
+jsio 'ui.win_main.show_all()'
+
+jsio : = 'Gtk.main()'
+while jsio__read event_name; do
+	case $event_name in
+	liststore_apps_update)
+		gui_liststore_apps_update
+		;;
+	win_install_show)
+		jsio '
+			ui.win_install.set_transient_for(ui.win_main);
+			ui.win_install.show_all();'
+		;;
+	install)
+		gui_app_install || continue
+		gui_win_install_reset
+		gui_liststore_apps_update
+		;;
+	install_cancel)
+		gui_win_install_reset
+		jsio 'ret(true)'; continue
+		;;
+	app_remove)
+		jsio app_list= '
+			let result, isResultEmpty = true;
+			let model = ui.iconview_apps.get_model();
+			let selectedItems = ui.iconview_apps.get_selected_items();
+			result = selectedItems.length + ":";
+			for(let i = selectedItems.length - 1; i >= 0; i--) {
+				let [ok, iter] = model.get_iter(selectedItems[i]);
+				if(!ok) continue;
+				if(isResultEmpty) isResultEmpty = false;
+				else result += "\n";
+				result += model.get_value(iter, 1);
+			}
+			result;'
+		apps_count=${app_list%%:*}
+		app_list=${app_list#*:}
+		case $apps_count in
+		0)
+			gui_dialog_err ui.win_main "$(l10n_msg 'No applications selected' ru 'Не выбрано ни одного приложения')"
+			jsio 'ret()'; continue
+		esac
+		jsio result= '
+			let dialog = new Gtk.MessageDialog({
+				transient_for: ui.win_main,
+				message_type: Gtk.MessageType.QUESTION,
+				buttons: Gtk.ButtonsType.OK_CANCEL,
+				title: ' "$program_full_name — $(l10n_msg 'Removing applications' ru 'Удаление приложений')" ',
+				text: ' "$(
+					case $apps_count in
+					1)
+						jsio app_name_markup= 'GLib.markup_escape_text(' "$app_list" ', -1)'
+						printf %s\\n "$(l10n_msg 'You have selected the "' ru 'Вы выбрали приложение «')<b>$app_name_markup</b>$(l10n_msg '" application to uninstall.' ru '» для удаления')."
+						;;
+					*)
+						l10n_msg "Selected applications to remove: $apps_count" ru "Выбрано приложений для удаления: $apps_count";;
+					esac
+					l10n_msg 'Do you want to continue?' ru 'Хотите продолжить?'
+				)" ',
+				use_markup: true
+			});
+			let result = dialog.run();
+			dialog.destroy();
+			result == Gtk.ResponseType.OK;'
+		case $result in
+		true) ;;
+		*) jsio 'ret()'; continue
+		esac
+		jsio 'ui.label_remove_text.set_text(' "$(l10n_msg 'Performing removing…' ru 'Выполняется удаление…')" ')'
+		jsio '
+			jsio.callbackOverrideAll = true;
+			ui.win_remove.set_transient_for(ui.win_main);
+			ui.win_remove.show();
+			ui.spinner_remove_progress.start();
+			let buf = ui.textview_remove_details.get_buffer();
+			let isBufEmpty = true;
+			jsio.readAsync((result) => {
+				if(result == "") {
+					delete jsio.callbackOverrideAll;
+					ui.spinner_remove_progress.stop();
+					ui.win_remove_button_close.set_sensitive(true);
+					jsio.handler();
+					return false;
+				}
+				buf.insert(buf.get_end_iter(), isBufEmpty ? result : "\n" + result, -1);
+				isBufEmpty = false;
+				return true;
+			});
+			ret();'
+		{ exit_code=$({
+			{
+				eval '"$cli_program_path" remove --'"$(
+					printf %s\\n "$app_list" |
+					LC_ALL=C awk -- 'BEGIN { ORS = "" } {
+						gsub(/\47/, "\47\134\47\47")
+						print " \47" $0 "\47"
+					}'
+				)" 2>&1 3>&- 4>&-
+				exit_code=$?
+				[ $exit_code -ne 0 ] &&
+					printf %s\\n "$(l10n_msg 'Exit code' ru 'Код завершения'): $exit_code"
+				printf %s\\n "$exit_code" >&3
+			} |
+			while IFS= read -r str; do
+				#str=${str#"$main_program_name: "}
+				case $str in
+				'') continue
+				esac
+				jsio__write_var str
+			done
+		} >&4 3>&1 4>&-); } 4>&1
+		jsio__write ''
+		case $exit_code in
+		0)
+			jsio 'ui.label_remove_text.set_text(' "$(l10n_msg 'Removing successfully completed' ru 'Удаление успешно выполнено')" ')';;
+		*)
+			jsio '
+				ui.image_remove_error_icon.show();
+				ui.label_remove_text.set_text(' "$(l10n_msg 'An error occurred while removing' ru 'При выполнении удаления произошла ошибка')" ');';;
+		esac
+		gui_liststore_apps_update
+		;;
+	win_remove_close)
+		jsio '
+			ui.win_remove.hide();
+			ui.image_remove_error_icon.hide();
+			ui.textview_remove_details.get_buffer().set_text("", -1);
+			ui.label_remove_text.set_text("");
+			ui.win_remove_button_close.set_sensitive(false);
+			ret(true);'
+		continue
+		;;
+	app_launch)
+		jsio app_name= '
+			let result = "";
+			let model = ui.iconview_apps.get_model();
+			let selectedItems = ui.iconview_apps.get_selected_items();
+			if(selectedItems.length) {
+				let [ok, iter] = model.get_iter(selectedItems[0]);
+				if(ok) result = model.get_value(iter, 1);
+			}
+			result;'
+		[ -n "$app_name" ] && {
+			err_text=$(checkutil setsid 2>&1) || {
+				gui_dialog_err ui.win_main "$err_text"
+				false
+			}
+		} && (setsid -- "$vardir/bin/$app_name" &)
+		;;
+	about)
+		jsio : = '
+			let xml = jsio.read();
+			builder.add_from_string(xml, xml.length)'
+		jsio__write <<- EOF
+		<?xml version="1.0" encoding="UTF-8"?>
+		<interface>
+		  <requires lib="gtk+" version="3.0"/>
+		  <object class="GtkAboutDialog" id="win_about">
+		    <property name="can_focus">False</property>
+		    <property name="type_hint">dialog</property>
+		    <property name="transient_for">win_main</property>
+		    <property name="program_name">$program_full_name</property>
+		    <property name="version">$program_version</property>
+		    <property name="copyright">Copyright &#169; 2021$(
+				year=$(date +%Y)
+				[ "$year" = 2021 ] || printf %s "-$year"
+		    ) 10geek</property>
+		    <property name="comments">$program_description</property>
+		    <property name="authors">$(
+				printf %s\\n 10geek
+				printf %s\\n "Simon Peter ($(l10n_msg 'AppImage developer' ru 'Разработчик AppImage'))"
+		    )</property>
+		    <property name="logo_icon_name">$program_icon_name</property>
+		    <property name="license_type">mit-x11</property>
+		    <child type="titlebar">
+		      <placeholder/>
+		    </child>
+		    <child internal-child="vbox">
+		      <object class="GtkBox">
+		        <property name="can_focus">False</property>
+		        <property name="orientation">vertical</property>
+		        <property name="spacing">2</property>
+		        <child internal-child="action_area">
+		          <object class="GtkButtonBox">
+		            <property name="can_focus">False</property>
+		            <property name="layout_style">end</property>
+		          </object>
+		          <packing>
+		            <property name="expand">False</property>
+		            <property name="fill">False</property>
+		            <property name="position">0</property>
+		          </packing>
+		        </child>
+		      </object>
+		    </child>
+		  </object>
+		</interface>
+		EOF
+		jsio__read; jsio__read
+		jsio '
+			let dialog = builder.get_object("win_about");
+			dialog.run();
+			dialog.destroy();'
+		;;
+	'')
+		jsio__read; break;;
+	esac
+	jsio 'ret()'
+done
+
+exit 0

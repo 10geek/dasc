@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+printf %s 100 > /proc/sys/vm/swappiness || exit
+! systemctl -q is-active zramswap.service ||
+	systemctl restart zramswap.service || exit

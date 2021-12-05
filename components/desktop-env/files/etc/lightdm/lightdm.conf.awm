@@ -1,0 +1,7 @@
+[Seat:*]
+greeter-session=slick-greeter
+#greeter-session=lightdm-autologin-greeter
+session-wrapper=/usr/local/share/dasc/libexec/desktop/graphical-session-wrapper
+greeter-setup-script=/usr/bin/numlockx <?awk print ENVIRON["CONF_GREETER_NUMLOCK_ENABLE"] ? "on" : "off" ?>
+greeter-hide-users=false
+user-session=openbox

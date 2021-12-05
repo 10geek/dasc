@@ -1,0 +1,15 @@
+Package: mailhandler
+Version: 1.0.0-1
+Architecture: all
+Maintainer: 10geek <x2geek@ya.ru>
+Depends: util-linux
+Recommends: liblockfile-bin, managelogs
+Suggests: bsd-mailx
+Conflicts: mail-transport-agent
+Replaces: mail-transport-agent
+Provides: mail-transport-agent
+Section: mail
+Priority: optional
+Description: A sendmail wrapper and mail queue manager
+ A sendmail wrapper and mail queue manager used for advanced mail processing
+ that can be configured via shell scripting.

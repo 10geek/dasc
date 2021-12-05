@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Categories=Utility;
+Name=Color picker
+Name[ru]=Выбор цвета
+Comment=Shows the color selection window
+Comment[ru]=Показывает окно выбора цвета
+Icon=color-picker
+Exec=colorpicker

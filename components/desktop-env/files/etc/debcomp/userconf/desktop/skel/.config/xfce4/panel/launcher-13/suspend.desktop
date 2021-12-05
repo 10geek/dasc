@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Suspend
+Name[ru]=Ждущий режим
+Comment=
+Exec=gsesctl suspend
+Icon=system-suspend
+Path=
+Terminal=false
+StartupNotify=false

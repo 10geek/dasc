@@ -1,0 +1,30 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Setting environment
+#\............................................................................./
+[ -n "$CONF_PASSWORD" ] || {
+	CONF_PASSWORD=$(passgen) &&
+	[ -n "$CONF_PASSWORD" ] &&
+	export CONF_PASSWORD
+} || exit
+
+#/*****************************************************************************\
+# Generating files from macro files
+#\............................................................................./
+find "$PREPDIR" -type f -name '*.awm' -exec sh -c '{
+	case $0 in "$PREPDIR/etc/debcomp/userconf"/*) exit; esac
+	awkmacro "$0" > "${0%.*}" &&
+	rm -f "$0"
+} || kill -INT "$PPID"' {} \; || exit
+
+#/*****************************************************************************\
+# Changing permissions
+#\............................................................................./
+chown root:nut \
+	"$PREPDIR/etc/nut" \
+	"$PREPDIR/etc/nut/ups.conf" \
+	"$PREPDIR/etc/nut/upsd.users" || exit
+chmod 640 \
+	"$PREPDIR/etc/nut/ups.conf" \
+	"$PREPDIR/etc/nut/upsd.users" || exit

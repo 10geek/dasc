@@ -1,0 +1,84 @@
+#!/usr/bin/env sh
+
+script_name=${0##*/}
+
+notify() {
+	[ -n "$2" ] && {
+		timer_time_remaining=$(get_timer_time_remaining)
+		[ -n "$timer_time_remaining" ] &&
+			set -- "$(printf %s\\n "$1" | sed '/[^.]$/ s/$/./') $2 $timer_time_remaining"
+	}
+	logger -t "$script_name" "$1"
+	printf %s\\n "$1" | wall
+	printf %s\\n "$1" | mail -s "$script_name" root
+}
+fsd_event() {
+	upsmon -c fsd
+}
+get_timer_time_remaining() {
+	LC_ALL=C awk -- 'BEGIN {
+		notifytype = ARGV[2]
+		upsname = ARGV[3]
+		ARGC = 2
+	} {
+		if( \
+			$1 == "AT" && $2 == notifytype && ($3 == upsname || $3 == "*") \
+			&& $4 == "START-TIMER" && $6 ~ /^[0-9][0-9]*$/ \
+		) sec = $6
+	} END {
+		if(sec == "") exit 1
+		sec += 0
+		if(!sec) {
+			print "now"
+			exit 0
+		}
+		printf("%s", "in")
+		min = (sec - sec % 60) / 60
+		sec = sec % 60
+		if(min > 0) printf("%s", " " min " min.")
+		if(sec > 0) printf("%s", " " sec " sec.")
+		printf("\n")
+	}' /etc/nut/upssched.conf "$NOTIFYTYPE" "$UPSNAME"
+}
+
+case $1 in
+online)
+	notify "UPS $UPSNAME on line power"
+	;;
+onbatt)
+	notify "UPS $UPSNAME on battery" 'The system shutdown will start'
+	;;
+onbatt-timer)
+	fsd_event
+	;;
+lowbatt)
+	notify "UPS $UPSNAME battery is low"
+	;;
+fsd)
+	notify "UPS $UPSNAME: forced shutdown in progress"
+	;;
+commok)
+	notify "Communications with UPS $UPSNAME established"
+	;;
+commbad)
+	notify "Communications with UPS $UPSNAME lost" 'The system shutdown will start'
+	;;
+commbad-timer)
+	fsd_event
+	;;
+shutdown)
+	notify "Auto logout and shutdown proceeding"
+	;;
+replbatt)
+	notify "UPS $UPSNAME battery needs to be replaced"
+	;;
+nocomm)
+	notify "UPS $UPSNAME is unavailable"
+	;;
+noparent)
+	notify "upsmon parent process died - shutdown impossible"
+	;;
+*)
+	notify "Unrecognized command: $1"
+	;;
+esac

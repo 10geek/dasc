@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Hardware-specific configuration modifications
+#\............................................................................./
+{
+	mkdir -p "$PREPDIR/etc/nut" &&
+	chown root:nut "$PREPDIR/etc/nut" &&
+	cp -p /etc/nut/ups.conf "$PREPDIR/etc/nut/ups.conf"
+} || exit
+
+cat << EOF >> "$PREPDIR/etc/nut/ups.conf" || exit
+
+[eaton]
+	driver = usbhid-ups
+	port = auto
+	vendorid = 0463
+	productid = ffff
+	desc = "Eaton Ellipse MAX 850"
+EOF

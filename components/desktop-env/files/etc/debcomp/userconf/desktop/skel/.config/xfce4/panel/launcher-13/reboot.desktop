@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Reboot
+Name[ru]=Перезагрузка
+Comment=
+Exec=gsesctl reboot
+Icon=system-reboot
+Path=
+Terminal=false
+StartupNotify=false

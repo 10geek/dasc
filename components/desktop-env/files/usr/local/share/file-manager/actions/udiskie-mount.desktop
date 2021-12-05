@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Action
+Name=Mount image
+Name[ru]=Смонтировать образ
+Icon=media-mount
+Profiles=main
+
+[X-Action-Profile main]
+MimeTypes=application/vnd.squashfs;application/x-cd-image;
+Exec=udiskie-mount %F

@@ -1,0 +1,114 @@
+atool manual
+compton manual for_manual(compton-conf)
+compton-conf manual
+conky-all manual
+dconf-cli manual
+dillo manual
+dmz-cursor-theme manual
+gjs manual
+gnome-system-monitor manual
+gtk2-engines manual
+gtk2-engines-murrine manual
+gtk2-engines-pixbuf manual
+gtk3-nocsd manual
+light-locker manual
+lxhotkey-plugin-openbox manual for(lxhotkey-core)
+lxpolkit manual for_manual(pcmanfm) for(pcmanfm)
+lxsession-edit manual
+numlockx manual
+onboard manual
+openbox manual for(obconf)
+papirus-icon-theme manual
+pcmanfm manual
+pulseaudio manual for_manual(xfce4-pulseaudio-plugin onboard conky-all pulsemixer qasmixer) for(pulseaudio-utils pavucontrol xfce4-pulseaudio-plugin libpulse0)
+pulsemixer manual
+python3-xdg manual
+qasmixer manual
+qt5-gtk-platformtheme manual for_manual(compton-conf qt5ct qt5-gtk2-platformtheme qasmixer) for(libqt5gui5)
+qt5-gtk2-platformtheme manual
+qt5ct manual
+reportbug-gtk manual for(reportbug)
+seahorse manual
+terminator manual for_manual(x11vnc xdg-utils onboard reportbug-gtk) for(tk8.6 libfile-desktopentry-perl)
+udiskie manual
+unar manual
+wmctrl manual
+x11vnc manual
+xdg-utils manual for_manual(onboard x11vnc terminator reportbug-gtk) for(onboard terminator reportbug)
+xdotool manual
+xfce4-appfinder manual
+xfce4-battery-plugin manual
+xfce4-clipman-plugin manual
+xfce4-cpufreq-plugin manual
+xfce4-cpugraph-plugin manual
+xfce4-datetime-plugin manual
+xfce4-diskperf-plugin manual
+xfce4-fsguard-plugin manual
+xfce4-genmon-plugin manual
+xfce4-mailwatch-plugin manual
+xfce4-netload-plugin manual
+xfce4-notifyd auto for_manual(xfce4-settings udiskie xfce4-pulseaudio-plugin xfce4-sensors-plugin xfce4-power-manager x11vnc terminator xdg-utils onboard reportbug-gtk) for(udiskie libnotify4)
+xfce4-panel manual
+xfce4-power-manager manual for(xfce4-power-manager-data)
+xfce4-power-manager-plugins auto for_manual(xfce4-power-manager) for(xfce4-power-manager)
+xfce4-pulseaudio-plugin manual
+xfce4-sensors-plugin manual
+xfce4-settings manual
+xfce4-statusnotifier-plugin manual
+xfce4-systemload-plugin manual
+xfce4-timer-plugin manual
+xfce4-wavelan-plugin manual
+xfce4-weather-plugin manual
+xfce4-whiskermenu-plugin manual
+xfce4-xkb-plugin manual
+adwaita-icon-theme auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(libgtk2.0-0)
+alsa-topology-conf auto for_manual(pulseaudio conky-all xfce4-pulseaudio-plugin onboard pulsemixer qasmixer) for(libasound2-data)
+alsa-ucm-conf auto for_manual(pulseaudio conky-all xfce4-pulseaudio-plugin onboard pulsemixer qasmixer) for(libasound2-data)
+alsa-utils auto for_manual(conky-all xfce4-pulseaudio-plugin onboard pulseaudio pulsemixer qasmixer) for(libasound2-data)
+arc auto for_manual(atool) for(atool)
+arj auto for_manual(atool) for(atool)
+bzip2 auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard gtk2-engines-murrine xdg-utils compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct python3-xdg atool conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin gtk2-engines gtk2-engines-pixbuf openbox x11vnc unar terminator dillo gnome-system-monitor qasmixer pulsemixer gjs reportbug-gtk) for(tar)
+compton-conf-l10n auto for_manual(compton-conf) for(compton-conf)
+cpio auto for_manual(atool) for(atool)
+dconf-gsettings-backend auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(gcr gvfs-backends gsettings-desktop-schemas seahorse dconf-service onboard gnome-keyring libgtk-3-common libgoa-1.0-common light-locker gnome-system-monitor)
+dosfstools auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(udisks2 util-linux)
+fonts-dejavu-core auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard gtk2-engines-murrine xdg-utils compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin gtk2-engines gtk2-engines-pixbuf openbox x11vnc terminator dillo gnome-system-monitor qasmixer pulsemixer gjs reportbug-gtk) for(fontconfig-config)
+gir1.2-notify-0.7 auto for_manual(udiskie x11vnc terminator xdg-utils onboard reportbug-gtk) for(udiskie terminator)
+gnome-keyring auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(gvfs-backends)
+gvfs auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(gvfs-daemons gvfs-common libgtk2.0-0 libgtk-3-0 gnome-system-monitor)
+gvfs-backends auto for_manual(pcmanfm xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(gvfs-daemons pcmanfm gvfs)
+gvfs-fuse auto for_manual(pcmanfm) for(pcmanfm)
+hunspell-en-us auto for_manual(onboard reportbug-gtk) for(libhunspell-1.7-0 libenchant-2-2)
+lbzip2 auto for_manual(atool) for(atool)
+libasound2-plugins auto for_manual(xfce4-pulseaudio-plugin onboard pulseaudio conky-all pulsemixer qasmixer) for(libasound2)
+libblockdev-crypto2 auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(udisks2)
+libcanberra-gtk3-module auto for_manual(pulseaudio conky-all onboard xfce4-pulseaudio-plugin pulsemixer qasmixer) for(libcanberra-gtk3-0)
+libfile-mimeinfo-perl auto for_manual(xdg-utils onboard x11vnc terminator reportbug-gtk) for(xdg-utils)
+libfm-modules auto for_manual(pcmanfm lxhotkey-plugin-openbox) for(libfm4)
+libjack-jackd2-0 auto for_manual(xfce4-pulseaudio-plugin onboard pulseaudio conky-all pulsemixer qasmixer) for(libasound2-plugins)
+libmtp-runtime auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(libmtp9)
+libnotify-bin auto for_manual(xfce4-settings udiskie xfce4-pulseaudio-plugin xfce4-sensors-plugin xfce4-power-manager x11vnc terminator xdg-utils onboard reportbug-gtk) for(xfce4-notifyd)
+libqt5core5a auto for_manual(qt5-gtk-platformtheme qt5-gtk2-platformtheme qt5ct compton-conf qasmixer) for(libqt5dbus5 libqt5gui5 qt5-gtk-platformtheme libqt5widgets5 qt5-gtk2-platformtheme libqt5network5 qt5ct libqt5svg5)
+libqt5gui5 auto for_manual(qt5-gtk-platformtheme qt5-gtk2-platformtheme qt5ct compton-conf qasmixer) for(qt5-gtk-platformtheme libqt5widgets5 qt5-gtk2-platformtheme qt5ct compton-conf libqt5svg5 qasmixer)
+libqt5svg5 auto for_manual(qt5-gtk-platformtheme qt5-gtk2-platformtheme qt5ct compton-conf qasmixer) for(libqt5gui5)
+librsvg2-common auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(librsvg2-2 xfce4-power-manager-data libgtk2.0-0 libgtk-3-0 adwaita-icon-theme)
+lxhotkey-data auto for_manual(lxhotkey-plugin-openbox) for(lxhotkey-gtk)
+lxhotkey-gtk auto for_manual(lxhotkey-plugin-openbox) for(lxhotkey-core)
+lzop auto for_manual(atool) for(atool)
+nomarch auto for_manual(atool) for(atool)
+obconf auto for_manual(openbox) for(openbox)
+onboard-data auto for_manual(onboard) for(onboard)
+p7zip-full auto for_manual(atool) for(atool p7zip)
+pavucontrol auto for_manual(xfce4-pulseaudio-plugin onboard pulseaudio conky-all pulsemixer qasmixer) for(xfce4-pulseaudio-plugin pulseaudio)
+pinentry-gnome3 auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(gpg-agent dirmngr)
+policykit-1 auto for_manual(pcmanfm lxpolkit udiskie xfce4-power-manager xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(udisks2 upower)
+qttranslations5-l10n auto for_manual(qt5-gtk-platformtheme qt5-gtk2-platformtheme qt5ct compton-conf qasmixer) for(libqt5core5a)
+rpm auto for_manual(atool) for(atool)
+unace auto for_manual(atool) for(atool)
+unalz auto for_manual(atool) for(atool)
+unzip auto for_manual(atool) for(zip atool)
+usbmuxd auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin openbox terminator x11vnc gnome-system-monitor qasmixer pulsemixer gjs xdg-utils reportbug-gtk) for(libimobiledevice6)
+x11-utils auto for_manual(xfce4-settings xdg-utils onboard x11vnc terminator reportbug-gtk) for(xfce4-settings xdg-utils)
+xz-utils auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard gtk2-engines-murrine xdg-utils compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct python3-xdg atool conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin gtk2-engines gtk2-engines-pixbuf openbox x11vnc unar terminator dillo gnome-system-monitor qasmixer pulsemixer gjs reportbug-gtk) for(atool tar)
+zip auto for_manual(atool) for(unzip atool)
+zstd auto for_manual(atool) for(atool)

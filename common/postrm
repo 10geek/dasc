@@ -1,0 +1,36 @@
+#!/usr/bin/env sh
+
+unset -v \
+	debconf_selections_tzdata \
+	update_motd_disabled_scripts
+[ -z "$VARFILE" ] || . "$VARFILE" || exit
+
+
+#/*****************************************************************************\
+# Enabling previously disabled scripts in /etc/update-motd.d
+#\............................................................................./
+[ -z "$update_motd_disabled_scripts" ] ||
+printf %s\\n "$update_motd_disabled_scripts" |
+while IFS= read -r file; do
+	chmod +x "$file" || exit
+done || exit
+
+#/*****************************************************************************\
+# Setting old debconf selections of the `tzdata` package and reconfiguring it
+#\............................................................................./
+[ -z "$debconf_selections_tzdata" ] || {
+	printf %s\\n "$debconf_selections_tzdata" | debconf-set-selections &&
+	dpkg-reconfigure tzdata
+} || exit
+
+#/*****************************************************************************\
+# Applying configuration changes
+#\............................................................................./
+systemctl daemon-reload || exit
+
+for service in chrony unattended-upgrades; do
+	! systemctl -q is-active "${service}.service" ||
+		systemctl restart "${service}.service" || exit
+done
+
+sysctl -p || exit

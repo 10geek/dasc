@@ -1,0 +1,5 @@
+curlftpfs manual
+expect manual for(tcl-expect)
+openssh-client manual for_manual(sshfs)
+sshfs manual
+util-linux manual for_manual(sshfs)

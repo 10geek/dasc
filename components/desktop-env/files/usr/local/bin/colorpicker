@@ -1,0 +1,165 @@
+#!/usr/bin/env sh
+
+. /usr/local/share/shell/jsio.sh || exit 1
+
+err() {
+	if [ $# -gt 1 ]; then
+		printf %s\\n "$program_name: $2" >&2
+	else
+		printf %s\\n "$program_name: $1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+err_usage() {
+	[ $# -ne 0 ] && err "$@"
+	set -- "$(usage | LC_ALL=C awk -- 'BEGIN { ARGC = 1; is_usage = 0 } {
+		if(!is_usage) {
+			sub(/^[\t\n\v\f\r ]+/, "")
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				is_usage = 1
+			} else next
+		}
+		sub(/^[\t\n\v\f\r ]+/, ""); sub(/[\t\n\v\f\r ]+$/, "")
+		if($0 == "") {
+			if(is_usage == 2) exit
+			else next
+		}
+		if(is_usage == 2) {
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				sub(/^[\t\n\v\f\r ]+/, "")
+			}
+			printf("%s", ARGV[1] ": ")
+		}
+		print "usage: " $0
+		is_usage = 2
+	} END { exit exit_code }' "$program_name")"
+	[ -n "$1" ] && err "$1"
+	err "try \`$program_name --help' for more information" >&2
+		exit 1
+}
+
+usage() {
+	cat <<- EOF
+	Usage: $program_name [<options>] ... [<hex_color>]
+
+	Options:
+	  -s          Output the selected color to stdout and not copy it to
+	              the clipboard
+	  -h, --help  Display this help and exit
+	EOF
+}
+
+
+unset -v color
+program_name=${0##*/}
+output_to_stdout=0
+
+case $1 in
+--help|-h) usage; exit 0;;
+esac
+
+case $1 in
+--help|-h) usage; exit 0;;
+*)
+	while getopts s OPT; do case $OPT in
+		s) output_to_stdout=1;;
+		?) exit 1;;
+	esac; done
+	;;
+esac
+shift $((OPTIND - 1))
+OPTIND=1
+
+if [ $# -eq 1 ]; then
+	color=${1#\#}
+	case $color in
+	[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]) ;;
+	[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]) ;;
+	*)
+		err 1 "\`$1' is invalid value of the <hex_color> argument"
+		;;
+	esac
+elif [ $# -ne 0 ]; then
+	err_usage 'invalid number of arguments'
+fi
+
+lang=$(locale | LC_ALL=C awk '{
+	if(!sub(/^[\t ]*LC_MESSAGES=/, "")) next
+	if(sub(/^"/, "")) {
+		if(!sub(/"$/, "")) next
+	} else if(sub(/^\47/, "")) {
+		if(!sub(/\47$/, "")) next
+	}
+	sub(/@.*/, "")
+	if(tolower($0) !~ /^[A-Za-z]+(_[A-Za-z]+)?\.utf-?8$/) next
+	sub(/\..*/, "")
+	print $0
+	exit
+}')
+
+signal_handler() {
+	case $1 in
+	EXIT) jsio__exit;;
+	*) exit;;
+	esac
+}
+signal_handler__register
+
+
+checkutil -a gjs cjs || exit 1
+jsio__init "$checkutil__util" 6 7 || exit 1
+
+jsio 'imports.gi.versions.Gtk = "3.0"'
+jsio 'imports.gi.versions.Gdk = "3.0"'
+jsio 'this.Gtk = imports.gi.Gtk'
+jsio 'this.Gdk = imports.gi.Gdk'
+
+jsio 'Gtk.init(null)'
+
+case $lang in
+ru|ru_*)
+	win_title='Выбор цвета'
+	;;
+*)
+	win_title='Color Selection'
+	;;
+esac
+
+jsio 'this.color_sel_dialog = new Gtk.ColorSelectionDialog({ title:' "$win_title" '})'
+jsio 'color_sel_dialog.set_icon_name("color-picker")'
+
+[ -n "$color" ] && {
+	jsio 'this.color = new Gdk.RGBA()'
+	jsio result= 'color.parse(' "#$color" ')'
+	case $result in
+	true) ;;
+	*)
+		err 1 "unable to parse value of the <hex_color> argument: \`#$color'";;
+	esac
+	jsio 'color_sel_dialog.get_color_selection().set_current_rgba(color)'
+}
+
+jsio result= 'color_sel_dialog.run() == Gtk.ResponseType.OK'
+case $result in
+true)
+	jsio 'this.color = color_sel_dialog.get_color_selection().get_current_rgba()'
+	jsio color= 'color.to_string()'
+	fn() { LC_ALL=C awk -- 'BEGIN {
+		gsub(/[^0-9,]/, "", ARGV[1])
+		split(ARGV[1], rgb, ",")
+		printf("%02X%02X%02X\n", rgb[1] + 0, rgb[2] + 0, rgb[3] + 0)
+	}' "$color"; }
+	if [ $output_to_stdout -eq 0 ]; then
+		color_hex=$(fn)
+		jsio 'this.clipboard = Gtk.Clipboard.get_default(Gdk.Display.get_default())'
+		jsio 'clipboard.set_text(' "$color_hex" ', -1)'
+		jsio 'clipboard.store()'
+	else
+		fn
+	fi
+esac
+
+exit 0

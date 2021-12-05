@@ -1,0 +1,5 @@
+freerdp2-x11 manual for(libfreerdp2-2 libwinpr2-2)
+smbnetfs manual
+tigervnc-viewer manual
+x11-utils manual
+tigervnc-common auto for_manual(tigervnc-viewer) for(tigervnc-viewer)

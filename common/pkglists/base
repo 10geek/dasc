@@ -1,0 +1,50 @@
+apt manual for_manual(cron init base-passwd dash at base-files bash bc binutils bsdutils man-db diffutils dpkg grep gzip sysvinit-utils e2fsprogs patch fdisk file findutils hostname tar libc-dev-bin m4 ncurses-bin pax sharutils time perl-base bsdmainutils gawk logrotate ed) for(dpkg libapt-pkg6.0)
+at manual
+base-files manual for_manual(bash)
+base-passwd manual
+bash manual
+bc manual
+binutils manual
+bsdmainutils manual for_manual(man-db) for(man-db)
+bsdutils manual for_manual(man-db bsdmainutils)
+cron manual for_manual(logrotate) for(logrotate)
+dash manual
+diffutils manual
+dpkg manual for_manual(dash grep gzip bc base-files bash man-db apt cron init base-passwd at binutils bsdutils diffutils e2fsprogs patch fdisk file findutils hostname tar sysvinit-utils libc-dev-bin m4 ncurses-bin pax sharutils time perl-base bsdmainutils gawk logrotate ed) for(grep gzip readline-common)
+e2fsprogs manual
+ed manual for_manual(patch) for(patch)
+fdisk manual
+file manual for(libmagic1)
+findutils manual
+gawk manual for_manual(base-files bash) for(base-files)
+grep manual
+gzip manual
+hostname manual
+init manual
+libc-dev-bin manual
+logrotate manual for_manual(cron) for(cron)
+m4 manual
+man-db manual
+ncurses-base manual
+ncurses-bin manual
+netbase manual
+patch manual
+pax manual
+perl-base manual for_manual(diffutils gzip bsdmainutils dash findutils gawk bc dpkg logrotate ncurses-bin sharutils sysvinit-utils init patch at binutils e2fsprogs m4 man-db bash ed bsdutils base-passwd cron grep file libc-dev-bin base-files fdisk pax apt hostname tar time) for(libtext-charwidth-perl libtext-iconv-perl liblocale-gettext-perl)
+sharutils manual
+sysvinit-utils manual
+tar manual for_manual(dpkg dash grep gzip bc base-files bash man-db apt cron init base-passwd at binutils bsdutils diffutils e2fsprogs patch fdisk file findutils hostname sysvinit-utils libc-dev-bin m4 ncurses-bin pax sharutils time perl-base bsdmainutils gawk logrotate ed)
+time manual
+apt-utils auto for_manual(apt dpkg dash grep gzip bc base-files bash man-db cron init sysvinit-utils base-passwd at binutils bsdutils diffutils e2fsprogs patch fdisk file findutils hostname tar libc-dev-bin m4 ncurses-bin pax sharutils time perl-base bsdmainutils gawk logrotate ed) for(debconf)
+bash-completion auto for_manual(bash) for(bash)
+ca-certificates auto for_manual(apt cron init base-passwd dash at base-files bash bc binutils bsdutils man-db diffutils dpkg grep gzip sysvinit-utils e2fsprogs patch fdisk file findutils hostname tar libc-dev-bin m4 ncurses-bin pax sharutils time perl-base bsdmainutils gawk logrotate ed) for(apt openssl)
+debconf auto for_manual(apt dpkg dash grep gzip bc base-files bash man-db cron init sysvinit-utils base-passwd at binutils bsdutils diffutils e2fsprogs patch fdisk file findutils hostname tar libc-dev-bin m4 ncurses-bin pax sharutils time perl-base bsdmainutils gawk logrotate ed) for(adduser base-passwd ca-certificates dash libc6 libpam-modules libpam-runtime libpam0g libssl1.1 man-db)
+debconf-i18n auto for_manual(dash grep gzip bc gawk base-files bash man-db init sysvinit-utils at base-passwd diffutils ed patch fdisk findutils hostname ncurses-bin time perl-base bsdmainutils dpkg logrotate sharutils binutils e2fsprogs m4 bsdutils cron file libc-dev-bin pax apt tar) for(debconf)
+debconf-utils auto for_manual(diffutils gzip perl-base bsdmainutils dash findutils gawk bc dpkg logrotate ncurses-bin sharutils sysvinit-utils init patch at binutils e2fsprogs m4 man-db bash ed bsdutils base-passwd cron grep file libc-dev-bin base-files fdisk pax apt hostname tar time) for(debconf)
+gpgv auto for_manual(apt cron init base-passwd dash at base-files bash bc binutils bsdutils man-db diffutils dpkg grep gzip sysvinit-utils e2fsprogs patch fdisk file findutils hostname tar libc-dev-bin m4 ncurses-bin pax sharutils time perl-base bsdmainutils gawk logrotate ed) for(apt)
+install-info auto for_manual(grep gzip bc base-files bash gawk) for(grep gzip readline-common)
+libnss-systemd auto for_manual(init logrotate cron) for(systemd-sysv)
+libpam-systemd auto for_manual(init logrotate cron) for(systemd-sysv)
+sensible-utils auto for_manual(apt cron init base-passwd dash at base-files bash bc binutils bsdutils man-db diffutils dpkg grep gzip sysvinit-utils e2fsprogs patch fdisk file findutils hostname tar libc-dev-bin m4 ncurses-bin pax sharutils time perl-base bsdmainutils gawk logrotate ed) for(perl-base)
+systemd-sysv auto for_manual(init logrotate cron) for(logrotate init)
+whiptail auto for_manual(apt dpkg dash grep gzip bc base-files bash man-db cron init sysvinit-utils base-passwd at binutils bsdutils diffutils e2fsprogs patch fdisk file findutils hostname tar libc-dev-bin m4 ncurses-bin pax sharutils time perl-base bsdmainutils gawk logrotate ed) for(debconf)

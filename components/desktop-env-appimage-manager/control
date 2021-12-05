@@ -1,0 +1,7 @@
+name=Desktop environment / AppImage Application Manager
+name[ru]=Окружение рабочего стола / Менеджер приложений AppImage
+description=A tool for installing and removing AppImage applications and integrating them with the system
+description[ru]=Инструмент для установки и удаления приложений AppImage и их интеграции с системой
+
+depends/desktop-env
+after/desktop-env

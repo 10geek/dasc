@@ -1,0 +1,16 @@
+[Unit]
+Description=Run scripts at system shutdown from /etc/dasc/events/shutdown directory
+DefaultDependencies=no
+After=dasc-event-startup.service
+Before=shutdown.target umount.target
+
+[Service]
+Type=oneshot
+ExecStart=run-parts --report /etc/dasc/events/shutdown
+StandardOutput=journal+console
+StandardError=journal+console
+RemainAfterExit=yes
+TimeoutStartSec=0
+
+[Install]
+WantedBy=shutdown.target

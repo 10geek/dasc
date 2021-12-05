@@ -1,0 +1,56 @@
+#!/usr/bin/env sh
+
+[ $EVENT_UID -ge $EVENT_UID_MIN ] && {
+	skip=0
+	case $EVENT_HOME in
+	/|//*|*/./*|*/.|*/../*|*/..) skip=1;;
+	/*) ;;
+	*) skip=1;;
+	esac
+	[ -e "$EVENT_HOME" ] && {
+		if [ $skip -eq 0 ] && [ -n "$(find "$EVENT_HOME" -path '*' -prune -uid "$EVENT_UID")" ]; then
+			rm -rf "$EVENT_HOME" || exit 1
+		else
+			printf %s\\n "$0: skipping removing the \`$EVENT_HOME' home directory of the \`$EVENT_USER' user" >&2
+		fi
+	}
+}
+
+[ -d "/media/$EVENT_USER" ] && {
+	for dir in "/media/$EVENT_USER"/* "/media/$EVENT_USER"/.*; do
+		{
+			[ "$dir" = "/media/$EVENT_USER/." ] ||
+			[ "$dir" = "/media/$EVENT_USER/.." ] ||
+			! [ -e "$dir" ]
+		} && continue
+		rmdir "$dir" 2>/dev/null ||
+		umount -flR "$dir" || exit 1
+	done
+	rmdir "/media/$EVENT_USER" || exit 1
+}
+
+{
+	systemctl restart systemd-journald.service &&
+	EVENT_SCRIPT_PATH=$0 find /var/log/journal -type f \( -name "user-$EVENT_UID.*" -o -name "user-$EVENT_UID@*" \) -exec sh -c '
+		interrupt() { kill -INT "$PPID"; exit; }
+		fuser -s "$0" && {
+			printf %s\\n "$EVENT_SCRIPT_PATH: file \`$0'\'' is currently in use" >&2
+			interrupt
+		}
+		rm -f "$0" || interrupt
+	' {} \; &&
+	find /dev/pts -uid "$EVENT_UID" -exec sh -c 'chown root "$0" || kill -INT "$PPID"' {} \; &&
+	find \
+		/dev/shm \
+		/var/spool \
+		/var/tmp \
+		/tmp \
+		-depth -uid "$EVENT_UID" -exec sh -c 'rm -rf "$0" || kill -INT "$PPID"' {} \; &&
+	rm -rf \
+		"/var/cache/lightdm/dmrc/$EVENT_USER.dmrc" \
+		"/var/lib/lightdm-data/$EVENT_USER" \
+		"/var/local/lib/dasc/userdata/$EVENT_USER" \
+		"/var/mail/$EVENT_USER"
+} || exit 1
+
+exit 0
