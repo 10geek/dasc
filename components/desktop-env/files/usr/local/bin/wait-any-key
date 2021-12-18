@@ -1,0 +1,134 @@
+#!/usr/bin/env sh
+
+err() {
+	if [ $# -gt 1 ]; then
+		printf %s\\n "$program_name: $2" >&2
+	else
+		printf %s\\n "$program_name: $1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+err_usage() {
+	[ $# -ne 0 ] && err "$@"
+	set -- "$(usage | LC_ALL=C awk -- 'BEGIN { ARGC = 1; is_usage = 0 } {
+		if(!is_usage) {
+			sub(/^[\t\n\v\f\r ]+/, "")
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				is_usage = 1
+			} else next
+		}
+		sub(/^[\t\n\v\f\r ]+/, ""); sub(/[\t\n\v\f\r ]+$/, "")
+		if($0 == "") {
+			if(is_usage == 2) exit
+			else next
+		}
+		if(is_usage == 2) {
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				sub(/^[\t\n\v\f\r ]+/, "")
+			}
+			printf("%s", ARGV[1] ": ")
+		}
+		print "usage: " $0
+		is_usage = 2
+	} END { exit exit_code }' "$program_name")"
+	[ -n "$1" ] && err "$1"
+	err "try \`$program_name --help' for more information" >&2
+	exit 1
+}
+l10n_msg() {
+	l10n_msg__msg=$1; shift
+	while [ $# -gt 1 ]; do
+		case $1 in
+		$lang)
+			l10n_msg__msg=$2
+			break
+			;;
+		*_*) ;;
+		*)
+			case $lang in
+			${1}_*) l10n_msg__msg=$2;;
+			esac
+			;;
+		esac
+		shift 2
+	done
+	printf %s\\n "$l10n_msg__msg"
+}
+
+SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
+eval "signal_handler__register() { trap 'EXIT_CODE=\$?; trap '\\'\\'' \$SIGNALS; signal_handler EXIT' EXIT;$(
+	LC_ALL=C awk -- 'BEGIN { for(i = 1; i < ARGC; i++) print "trap \47trap \47\134\47\134\47\47 $SIGNALS; signal_handler " ARGV[i] "; signal_handler__register\47 " ARGV[i] }' $SIGNALS
+);}"
+
+
+lang=$(locale | LC_ALL=C awk '{
+	if(!sub(/^[\t ]*LC_MESSAGES=/, "")) next
+	if(sub(/^"/, "")) {
+		if(!sub(/"$/, "")) next
+	} else if(sub(/^\47/, "")) {
+		if(!sub(/\47$/, "")) next
+	}
+	sub(/@.*/, "")
+	if(tolower($0) !~ /^[A-Za-z]+(_[A-Za-z]+)?\.utf-?8$/) next
+	sub(/\..*/, "")
+	print $0
+	exit
+}')
+
+program_name=${0##*/}
+exit_code=0
+
+
+usage() {
+	cat <<- EOF
+	Usage: $program_name [<options>] ... [<program>] [<arguments>] ...
+
+	Options:
+	  -h, --help     Display this help and exit
+	EOF
+}
+
+case $1 in
+--help|-h) usage; exit 0;;
+*)
+	while getopts '' OPT; do case $OPT in
+		?) exit 1;;
+	esac; done
+	;;
+esac
+shift $((OPTIND - 1))
+OPTIND=1
+
+[ $# -eq 0 ] || "$@"
+exit_code=$?
+
+stty_old_settings=$(stty -g < /dev/tty)
+stty -icanon -echo < /dev/tty
+
+signal_handler() {
+	case $1 in
+	EXIT)
+		stty "$stty_old_settings" < /dev/tty
+		;;
+	*)
+		exit
+		;;
+	esac
+}
+signal_handler__register
+
+case $lang in
+ru_*)
+	printf %s\\n 'Нажмите любую клавишу для продолжения…'
+	;;
+*)
+	printf %s\\n 'Press any key to continue…'
+	;;
+esac
+
+dd bs=1 count=1 > /dev/null 2>&1
+
+exit $exit_code

@@ -8,5 +8,5 @@ Categories=System;
 Keywords=Update;Configuration;
 Keywords[ru]=Update;Configuration;Обновить;Конфигурация;
 Icon=system-software-install
-Exec=sh -c 'gsuexec dasc-install; read line'
+Exec=wait-any-key gsuexec dasc-install
 Terminal=true
