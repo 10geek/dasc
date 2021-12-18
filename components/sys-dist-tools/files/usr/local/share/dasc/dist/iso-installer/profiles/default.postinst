@@ -28,6 +28,7 @@ wait_input_and_exit() {
 unset -v DEBIAN_FRONTEND
 SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
 dist_dir=/root/.local/share/dasc/tmp/dasc-dist
+apt_sources_list_file=/etc/apt/sources.list.d/50-dasc-installer-tmp.list
 export HOME=/root || exit 1
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin || exit 1
 
@@ -41,36 +42,52 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin || exit
 	rm -rf "$dist_dir"
 } || wait_input_and_exit 1
 
+setfont Uni3-Terminus14
+
+apt-cdrom -f add | LC_ALL=C awk '{
+	if(sub(/^deb cdrom:/, "deb [ trusted=yes ] cdrom:")) print $0
+}' > "$apt_sources_list_file"
+
 buf=$(
+	. /etc/os-release
 	LC_ALL=C awk 'BEGIN {
-		is_main_repo_output = 0
+		is_main_repo_output = is_last_line_empty = 0
+		main_repo = ARGV[2] == "" ? "http://deb.debian.org/debian/" : ARGV[2]
+		version_codename = ARGV[3]
+		ARGC = 2
 	} {
-		if(!is_main_repo_output && $0 ~ /^[\t ]*#?deb([\t ]+\[[^]]+\])?[\t ]+cdrom:/) {
+		if($0 ~ /^[\t ]*#?deb([\t ]+\[[^]]+\])?[\t ]+cdrom:/) {
+			if(!is_main_repo_output) { next }
 			is_main_repo_output = 1
 			gsub(/.*\[[^]]+\][^\t ]*[\t ]*/, "")
-			print "deb http://deb.debian.org/debian/ " $0
-			print "deb-src http://deb.debian.org/debian/ " $0
+			print "deb " main_repo " " $0
+			print "deb-src " main_repo " " $0
 			next
 		}
+		if(is_main_repo_output && ($1 == "deb" || $1 == "deb-src") && \
+			$2 == main_repo && $3 == version_codename) { next }
 		if($0 ~ /^# Line commented out by installer/ && (getline) > 0)
 			sub(/^[\t ]*#[\t ]*/, "")
+		if($0 == "") {
+			if(is_last_line_empty) { next }
+			is_last_line_empty = 1
+		} else is_last_line_empty = 0
 		print $0
-	}' /etc/apt/sources.list
+	}' /etc/apt/sources.list \
+	"$(LC_ALL=C awk '{
+		if(!match($0, "[\t ]*#?[\t ]*deb(-src)?[\t ]+https?://[^\t ]+")) { next }
+		$0 = substr($0, RSTART, RLENGTH)
+		sub(/.*[\t ]/, "")
+		if($0 ~ "[a-z-]+://security\\.debian\\.org") { next }
+		print $0
+		exit
+	}' /etc/apt/sources.list)" \
+	"$VERSION_CODENAME"
 ) &&
 cat <<- EOF > /etc/apt/sources.list
 $buf
 EOF
 unset -v buf
-
-apt_sources_list_file=/etc/apt/sources.list.d/50-dasc-installer-tmp.list
-
-apt-cdrom -fn add | LC_ALL=C awk '{
-	if(sub(/^deb cdrom:/, "deb [ trusted=yes ] cdrom:")) print $0
-}' > /etc/apt/sources.list.d/50-dasc-installer-tmp.list
-
-setfont Uni3-Terminus14
-
-dpkg-reconfigure tzdata
 
 printf %s\\n "Trying to download a latest version of DASC..."
 sh -c 'eval "$(tar -xOf /media/cdrom/simple-cdd/dasc.tar.gz common/files/usr/local/bin/dasc-install)"' dasc-install -d
@@ -87,6 +104,8 @@ case $? in
 	) || wait_input_and_exit 1
 	;;
 esac
+
+dpkg-reconfigure tzdata
 
 while :; do
 	"$dist_dir/debcomp" -c || {
