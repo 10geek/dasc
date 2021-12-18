@@ -29,6 +29,7 @@ unset -v DEBIAN_FRONTEND
 SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
 dist_dir=/root/.local/share/dasc/tmp/dasc-dist
 apt_sources_list_file=/etc/apt/sources.list.d/50-dasc-installer-tmp.list
+apt_preferences_file=/etc/apt/preferences.d/50-dasc-installer-tmp
 export HOME=/root || exit 1
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin || exit 1
 
@@ -44,9 +45,24 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin || exit
 
 setfont Uni3-Terminus14
 
-apt-cdrom -f add | LC_ALL=C awk '{
+buf=$(LC_ALL=C apt-cdrom -f add | LC_ALL=C awk '{
 	if(sub(/^deb cdrom:/, "deb [ trusted=yes ] cdrom:")) print $0
-}' > "$apt_sources_list_file"
+}')
+cat <<- EOF > "$apt_sources_list_file"
+$buf
+EOF
+LC_ALL=C awk '{
+	if(!sub(/^deb cdrom:/, "")) { next }
+	if(sub(/^\[/, "")) sub(/\].*/, "")
+	else sub(/[\t ].*/, "")
+	gsub(/\"/, "")
+	print "Package: *"
+	print "Pin: origin \"" $0 "\""
+	print "Pin-Priority: 1000"
+	exit
+}' <<- EOF > "$apt_preferences_file"
+$buf
+EOF
 
 buf=$(
 	. /etc/os-release
@@ -115,7 +131,9 @@ while :; do
 	[ -e /var/local/lib/debcomp/rollback ] && break
 done
 
-rm -rf "$dist_dir" "$apt_sources_list_file"
+rm -rf "$dist_dir" \
+	"$apt_sources_list_file" \
+	"$apt_preferences_file"
 dir=${dist_dir%/*}
 while [ ":$dir" != :/root/.local/share ]; do
 	! [ -e "$dir" ] || ! isdirempty "$dir" || rmdir "$dir"
