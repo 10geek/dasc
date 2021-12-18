@@ -1,4 +1,6 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?><?awk
+has_battery = system("debcomp isdirempty /sys/class/power_supply")
+?>
 
 <channel name="xfce4-panel" version="1.0">
   <property name="configver" type="int" value="2"/>
@@ -17,8 +19,8 @@
         <value type="int" value="3"/>
         <value type="int" value="4"/>
         <value type="int" value="5"/>
-        <value type="int" value="6"/>
-        <value type="int" value="7"/>
+        <value type="int" value="6"/><?awk if(has_battery) { ?>
+        <value type="int" value="7"/><?awk } ?>
         <value type="int" value="8"/>
         <value type="int" value="9"/>
         <value type="int" value="10"/>
@@ -27,15 +29,15 @@
       </property>
       <property name="nrows" type="uint" value="1"/>
       <property name="length-adjust" type="bool" value="true"/>
-      <property name="background-style" type="uint" value="0"/>
+      <property name="background-style" type="uint" value="1"/>
+      <property name="enter-opacity" type="uint" value="85"/>
       <property name="leave-opacity" type="uint" value="85"/>
       <property name="background-rgba" type="array">
         <value type="double" value="0.235294"/>
         <value type="double" value="0.243137"/>
         <value type="double" value="0.250980"/>
-        <value type="double" value="1.000000"/>
+        <value type="double" value="0.700000"/>
       </property>
-      <property name="enter-opacity" type="uint" value="85"/>
     </property>
     <property name="panel-2" type="empty">
       <property name="autohide-behavior" type="uint" value="1"/>
@@ -87,8 +89,9 @@
       <property name="show-frame" type="bool" value="false"/>
       <property name="square-icons" type="bool" value="true"/>
       <property name="size-max" type="uint" value="20"/>
-    </property>
-    <property name="plugin-7" type="string" value="power-manager-plugin"/>
+      <property name="icon-size" type="int" value="0"/>
+    </property><?awk if(has_battery) { ?>
+    <property name="plugin-7" type="string" value="power-manager-plugin"/><?awk } ?>
     <property name="plugin-8" type="string" value="xfce4-clipman-plugin"/>
     <property name="plugin-9" type="string" value="notification-plugin"/>
     <property name="plugin-10" type="string" value="pulseaudio">

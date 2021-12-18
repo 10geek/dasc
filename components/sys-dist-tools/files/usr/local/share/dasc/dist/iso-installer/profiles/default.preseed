@@ -1,0 +1,33 @@
+###### Simple-CDD commands
+
+# You may add to the following commands by including a ";" followed by your
+# shell commands.
+
+# Loads the simple-cdd-profiles udeb to which asks for which profiles to use,
+# load the debconf preseeding and queue packages for installation.
+d-i preseed/early_command string anna-install simple-cdd-profiles
+
+
+###### Clock and time zone setup
+
+# You may set this to any valid setting for $TZ; see the contents of
+# /usr/share/zoneinfo/ for valid values.
+d-i time/zone string UTC
+
+
+###### Apt setup
+
+# Only scan the first CD by default
+d-i apt-setup/cdrom/set-first boolean false
+
+
+###### Package selection
+
+# Install standard utilities only
+tasksel tasksel/first multiselect standard
+
+# Some versions of the installer can report back on what software you have
+# installed, and what software you use. The default is not to report back,
+# but sending reports helps the project determine what software is most
+# popular and include it on CDs.
+d-i popularity-contest/participate boolean false

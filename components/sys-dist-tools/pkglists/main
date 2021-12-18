@@ -1,0 +1,4 @@
+simple-cdd manual
+dctrl-tools auto for_manual(simple-cdd) for(debian-cd)
+mtools auto for_manual(simple-cdd) for(debian-cd)
+xorriso auto for_manual(simple-cdd) for(debian-cd)

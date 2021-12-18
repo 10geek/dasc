@@ -1,0 +1,4 @@
+name=System / Configuration and tools for its deployment
+name[ru]=Система / Конфигурация и инструменты для её развёртывания
+description=A copy of the DASC configuration and additional tools for its deployment, such as a script for building an ISO image of an offline installer
+description[ru]=Копия конфигурации DASC и дополнительные инструменты для её развёртывания, такие, как скрипт для сборки ISO-образа оффлайного установщика

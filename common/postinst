@@ -69,7 +69,7 @@ is_group_exist wheel || {
 	chown root:mail /var/spool/mail/root
 } || exit
 
-chmod 700 "$HOME" || exit
+[ ":$HOME" = :/ ] || chmod 700 "$HOME" || exit
 
 #/*****************************************************************************\
 # Disabling certain scripts in /etc/update-motd.d
@@ -100,7 +100,7 @@ dpkg-reconfigure tzdata || exit
 #/*****************************************************************************\
 # Cleaning up logs
 #\............................................................................./
-debcomp emptydir /var/log/chrony || exit
+! [ -d /var/log/chrony ] || debcomp emptydir /var/log/chrony || exit
 [ $CONF_REMOVE_INSTALLER_LOGS -eq 0 ] ||
 	debcomp remove /var/log/installer || exit
 

@@ -68,6 +68,7 @@ components/net-teleporter=1
 components/svcdiag-common=1
 components/svcdiag-hw=1
 components/svcdiag-net=1
+components/sys-dist-tools=1
 components/sys-l10n-ru=1
 components/sys-repo-proposed-updates=1
 components/sys-zram=1

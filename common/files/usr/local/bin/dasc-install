@@ -47,6 +47,35 @@ err() {
 	fi
 	return 1
 }
+err_usage() {
+	[ $# -ne 0 ] && err "$@"
+	set -- "$(usage | LC_ALL=C awk -- 'BEGIN { ARGC = 1; is_usage = 0 } {
+		if(!is_usage) {
+			sub(/^[\t\n\v\f\r ]+/, "")
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				is_usage = 1
+			} else next
+		}
+		sub(/^[\t\n\v\f\r ]+/, ""); sub(/[\t\n\v\f\r ]+$/, "")
+		if($0 == "") {
+			if(is_usage == 2) exit
+			else next
+		}
+		if(is_usage == 2) {
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				sub(/^[\t\n\v\f\r ]+/, "")
+			}
+			printf("%s", ARGV[1] ": ")
+		}
+		print "usage: " $0
+		is_usage = 2
+	} END { exit exit_code }' "$program_name")"
+	[ -n "$1" ] && err "$1"
+	err "try \`$program_name --help' for more information" >&2
+	exit 1
+}
 l10n_msg() {
 	l10n_msg__msg=$1; shift
 	while [ $# -gt 1 ]; do
@@ -167,7 +196,8 @@ lang=$(locale | LC_ALL=C awk '{
 program_name=${0##*/}
 program_version=1.0.0
 update_id_file=$HOME/.local/share/dasc/data/last-dasc-update-id
-download_dir=$HOME/.local/share/dasc/tmp/dasc-dist
+dist_dir=$HOME/.local/share/dasc/tmp/dasc-dist
+download_only=0
 { USER_ID=$(id -u) && [ -n "$USER_ID" ]; } ||
     err 1 'unable to get user ID'
 
@@ -177,6 +207,7 @@ usage() {
 	Usage: $program_name [<options>] ...
 
 	Options:
+	  -d             Download only
 	  -v, --version  Output version information and exit
 	  -h, --help     Display this help and exit
 	EOF
@@ -186,7 +217,8 @@ case $1 in
 --help|-h) usage; exit 0;;
 --version|-v) printf %s\\n "$program_version"; exit 0;;
 *)
-	while getopts '' OPT; do case $OPT in
+	while getopts d OPT; do case $OPT in
+		d) download_only=1;;
 		?) exit 1;;
 	esac; done
 	;;
@@ -207,12 +239,15 @@ signal_handler() {
 	case $1 in
 	EXIT)
 		set -- 0
-		rm -rf "$download_dir" || set -- 1
-		set -- "$1" "${download_dir%/*}"
-		while [ ":$2" != ":$HOME/.local/share" ]; do
-			! [ -e "$2" ] || ! isdirempty "$2" || rmdir "$2" || { set -- 1; break; }
-			set -- "$1" "${2%/*}"
-		done
+		rm -rf "$dist_dir/downloaded" || set -- 1
+		[ $download_only -ne 0 ] || {
+			rm -rf "$dist_dir/mainstream" || set -- 1
+			set -- "$1" "$dist_dir"
+			while [ ":$2" != ":$HOME/.local/share" ]; do
+				! [ -e "$2" ] || ! isdirempty "$2" || rmdir "$2" || { set -- 1; break; }
+				set -- "$1" "${2%/*}"
+			done
+		}
 		[ $EXIT_CODE -eq 0 ] || exit $EXIT_CODE
 		exit $1
 		;;
@@ -241,9 +276,9 @@ update_id=${update_id##*/}
 	err 0 'the latest version of DASC is currently in use, update is not required' ru 'на данный момент используется последняя версия DASC, обновление не требуется'
 
 {
-	rm -rf "$download_dir" &&
-	mkdir -p "$download_dir" &&
-	cd "$download_dir"
+	rm -rf "$dist_dir/downloaded" &&
+	mkdir -p "$dist_dir/downloaded" &&
+	cd "$dist_dir/downloaded"
 } || exit 1
 
 { pipestatus=$({
@@ -254,22 +289,28 @@ update_id=${update_id##*/}
 	err 1 'unable to download the distribution' ru 'невозможно загрузить дистрибутив'
 for dir in *; do [ -d "$dir" ] && break; done
 [ -d "$dir" ] || err 1 'unable to determine the name of the unpacked directory'
-cd "$dir" || exit 1
+{
+	mv -f "$dir" "$dist_dir/mainstream" &&
+	cd .. &&
+	rm -rf downloaded
+} || exit 1
 
-is_conf_installed_initially=0
-[ -e /var/local/lib/debcomp/rollback ] && {
-	is_conf_installed_initially=1
-	touch "$download_dir" /var/local/lib/debcomp/rollback || exit 1
-}
+[ $download_only -ne 0 ] || {
+	is_conf_installed_initially=0
+	[ -e /var/local/lib/debcomp/rollback ] && {
+		is_conf_installed_initially=1
+		touch "$dist_dir" /var/local/lib/debcomp/rollback || exit 1
+	}
 
-./debcomp -c || exit
+	./mainstream/debcomp -c || exit
 
-[ -e /var/local/lib/debcomp/rollback ] && {
-	[ $is_conf_installed_initially -eq 0 ] ||
-	[ -n "$(find -L /var/local/lib/debcomp/rollback -prune -newer "$download_dir")" ]
-} && {
-	[ -e "${update_id_file%/*}" ] || mkdir -p "${update_id_file%/*}" || exit 1
-	printf %s\\n "$update_id" > "$update_id_file" || exit 1
+	[ -e /var/local/lib/debcomp/rollback ] && {
+		[ $is_conf_installed_initially -eq 0 ] ||
+		[ -n "$(find -L /var/local/lib/debcomp/rollback -prune -newer "$dist_dir")" ]
+	} && {
+		[ -e "${update_id_file%/*}" ] || mkdir -p "${update_id_file%/*}" || exit 1
+		printf %s\\n "$update_id" > "$update_id_file" || exit 1
+	}
 }
 
 exit 0

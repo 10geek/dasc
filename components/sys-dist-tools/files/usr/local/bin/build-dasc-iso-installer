@@ -1,0 +1,268 @@
+#!/usr/bin/env sh
+#
+# Script for building an offline Debian ISO installer with integrated DASC
+# configuration
+#
+# Version: 1.0.0 (16/12/2021)
+#
+# Copyright (c) 2021 10geek
+#
+# Licensed under the MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+err() {
+	if [ $# -gt 1 ]; then
+		printf %s\\n "$program_name: $2" >&2
+	else
+		printf %s\\n "$program_name: $1" >&2
+	fi
+	[ $# -gt 1 ] && exit "$1"
+	return 1
+}
+err_usage() {
+	[ $# -ne 0 ] && err "$@"
+	set -- "$(usage | LC_ALL=C awk -- 'BEGIN { ARGC = 1; is_usage = 0 } {
+		if(!is_usage) {
+			sub(/^[\t\n\v\f\r ]+/, "")
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				is_usage = 1
+			} else next
+		}
+		sub(/^[\t\n\v\f\r ]+/, ""); sub(/[\t\n\v\f\r ]+$/, "")
+		if($0 == "") {
+			if(is_usage == 2) exit
+			else next
+		}
+		if(is_usage == 2) {
+			if(tolower(substr($0, 1, 6)) == "usage:") {
+				$0 = substr($0, 7)
+				sub(/^[\t\n\v\f\r ]+/, "")
+			}
+			printf("%s", ARGV[1] ": ")
+		}
+		print "usage: " $0
+		is_usage = 2
+	} END { exit exit_code }' "$program_name")"
+	[ -n "$1" ] && err "$1"
+	err "try \`$program_name --help' for more information" >&2
+	exit 1
+}
+checkutil() {
+	unset -v checkutil__not_found_utils checkutil__util
+	checkutil__silent=0
+	checkutil__any=0
+	while [ $# -ne 0 ]; do
+		checkutil___is_arg_opt=0
+		case $1 in --)
+			shift; break; esac
+		case $1 in -s*|-*s*|-*s)
+			checkutil___is_arg_opt=1; checkutil__silent=1; esac
+		case $1 in -a*|-*a*|-*a)
+			checkutil___is_arg_opt=1; checkutil__any=1; esac
+		case $checkutil___is_arg_opt in 0)
+			break; esac
+		shift
+	done
+	set -- $*
+	while [ $# -ne 0 ]; do
+		if ! checkutil__util_path=$(command -v -- "$1") || [ -z "$checkutil__util_path" ]; then
+			checkutil__not_found_utils=$checkutil__not_found_utils' '$1
+		else case $checkutil__any in 1)
+			checkutil__util=$1
+			return 0
+		esac; fi
+		shift
+	done
+	[ -z "$checkutil__not_found_utils" ] || {
+		checkutil__not_found_utils=${checkutil__not_found_utils# }
+		[ $checkutil__silent -eq 0 ] &&
+			err "\`$(printf %s\\n "$checkutil__not_found_utils" | sed 's/ /'\'', `/g; s/\(.*\), /\1 and /')' is not found in the system; PATH=$PATH"
+		return 1
+	}
+}
+
+
+program_name=${0##*/}
+program_version=1.0.0
+lf=$(printf \\n.); lf=${lf%.}
+
+usage() {
+	cat <<- EOF
+	Usage: $program_name [<options>] ... <working_directory>
+
+	Options:
+	  -v, --version  Output version information and exit
+	  -h, --help     Display this help and exit
+	EOF
+}
+
+case $1 in
+--help|-h) usage; exit 0;;
+--version|-v) printf %s\\n "$program_version"; exit 0;;
+*)
+	while getopts '' OPT; do case $OPT in
+		?) exit 1;;
+	esac; done
+	;;
+esac
+shift $((OPTIND - 1))
+OPTIND=1
+
+[ $# -eq 1 ] || err_usage 'invalid number of arguments'
+
+{ dpkg_arch=$(dpkg --print-architecture) && [ -n "$dpkg_arch" ]; } ||
+	err 'unable to get dpkg architecture'
+
+{
+	{ [ -d "$1" ] || {
+		mkdir -p -- "$1" &&
+		cp -afT -- /usr/local/share/dasc/dist/iso-installer "$1"
+	}; } &&
+	cd -- "$1" &&
+	checkutil build-simple-cdd dpkg-deb
+} || exit 1
+
+{
+	{ [ -e tmp ] || mkdir tmp; } &&
+	{ [ -e tmp/dasc ] || {
+		mkdir tmp/dasc &&
+		tar -xf /usr/local/share/dasc/dist/dasc.tar.gz -C tmp/dasc
+	}; }
+} || exit 1
+
+unset -v local_pkgs local_deps
+for component_dir in \
+	tmp/dasc/common \
+	tmp/dasc/components/*
+do
+	[ -d "$component_dir" ] || continue
+	for pkg_path in "$component_dir/pkgs/"*; do
+		[ -e "$pkg_path" ] || continue
+		if [ -f "$pkg_path" ]; then
+			pkg_info=$(dpkg-deb -f "$pkg_path")
+		else
+			pkg_info=$(cat "$pkg_path/DEBIAN/control")
+		fi ||
+			err 1 "unable to get info of the package \`$pkg_path'"
+		buf=$(
+			LC_ALL=C awk -- 'BEGIN {
+				ARGC = 1
+				field_names["package"] = field_names["architecture"] = \
+				field_names["depends"] = field_names["pre-depends"] = ""
+			} {
+				if(match($0, /^[A-Za-z0-9_-]+:/)) {
+					field_name = tolower(substr($0, 1, RLENGTH - 1))
+					if(field_name in field_names) {
+						$0 = substr($0, RLENGTH + 1)
+						sub(/^[\t ]+/, "")
+						f[field_name] = $0
+					}
+				} else if(field_name in field_names && sub(/^[\t ]/, "")) {
+					if(f[field_name] == "")
+						f[field_name] = $0
+					else
+						f[field_name] = f[field_name] "\n" $0
+				}
+			} END {
+				if(!("package" in f) || f["package"] == "") exit 1
+				if(f["architecture"] == "all" || f["architecture"] == ARGV[1]) f["architecture"] = ""
+				print f["package"] (f["architecture"] == "" ? "" : ":" f["architecture"])
+
+				deps = f["depends"] "," f["pre-depends"]
+				gsub(/(\([^)]+\)|\[[^]]+\]|[\t ]+)/, "", deps)
+				gsub(/\|/, ",", deps)
+				deps_arr_len = split(deps, deps_arr, ",")
+				for(i = 1; i <= deps_arr_len; i++) {
+					if(deps_arr[i] == "") { continue }
+					if(match(deps_arr[i], /:[^:]+$/)) {
+						pkg_name = substr(deps_arr[i], 1, RSTART - 1)
+						pkg_arch = substr(deps_arr[i], RSTART + 1)
+						if(pkg_arch == "any" || pkg_arch == ARGV[1]) pkg_arch = ""
+					} else {
+						pkg_name = deps_arr[i]
+						pkg_arch = ""
+					}
+					print pkg_name (pkg_arch == "" ? "" : ":" pkg_arch)
+				}
+			}' "$dpkg_arch" <<- EOF
+			$pkg_info
+			EOF
+		) ||
+			err 1 "unable to get name of the package \`$pkg_path'"
+		local_pkgs=$local_pkgs${buf%%$lf*}$lf
+		local_deps=$local_deps${buf#*$lf}$lf
+	done
+done
+unset -v buf
+local_pkgs=${local_pkgs%$lf}
+local_deps=${local_deps%$lf}
+
+{
+	cat /usr/share/simple-cdd/profiles/default.downloads || exit 1
+	echo
+	{
+		printf %s\\n\\n "$local_pkgs"
+		# TODO: printf %s\\n task-xfce-desktop
+		printf %s\\n "$local_deps"
+		for component_dir in \
+			tmp/dasc/common \
+			tmp/dasc/components/*
+		do
+			[ -d "$component_dir" ] || continue
+			[ -d "$component_dir/pkglists" ] &&
+				find -L "$component_dir/pkglists" -type f -exec cat {} \;
+			for component_script in preinst postinst; do
+				component_script=$component_dir/$component_script
+				[ -f "$component_script" ] || continue
+				LC_ALL=C awk -- '{
+					if(sub("\134\134$", "")) { line = line $0; next }
+					line = line $0
+					gsub(/[\t\v\f\r ]+/, " ", line)
+					while(match(line, /apt(-get|itude)?( [^;]+)?( [A-Za-z0-9.:_][A-Za-z0-9.:_-]*)+/)) {
+						pkgs = substr(line, RSTART, RLENGTH)
+						line = substr(line, RSTART + RLENGTH)
+						match(pkgs, /( [A-Za-z0-9.:_][A-Za-z0-9.:_-]*)+$/)
+						pkgs = substr(pkgs, RSTART, RLENGTH)
+						pkgs_arr_len = split(pkgs, pkgs_arr)
+						for(i = 1; i <= pkgs_arr_len; i++) {
+							if(i == 1 && pkgs_arr[i] == "install") { continue }
+							print pkgs_arr[i]
+						}
+					}
+					line = ""
+				}' "$component_script"
+			done
+		done
+	} | LC_ALL=C awk -- 'BEGIN { state = 1 } {
+		if(state == 1) {
+			if($0 == "") state++
+			else exclude[$0] = ""
+			next
+		}
+		if(!($1 in exclude)) {
+			exclude[$1] = ""
+			print $1
+		}
+	}'
+} > profiles/default.downloads || exit 1
+
+build-simple-cdd --conf simple-cdd.conf --force-root --dvd || exit 1

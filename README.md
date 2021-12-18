@@ -1,6 +1,6 @@
 # DASC
 
-DASC (Damn Advanced System Configuration, Debian-based Advanced System Configuration) is a ready-to-use configuration for operating systems based on GNU/Linux, consisting of a set of configurable components that provide easy and fast installation and configuration of software for various system use cases. The main priorities of the project are accuracy and striving for perfection, reliability, flexibility and functionality, convenience and productivity of use. At the moment, this configuration is adapted for the Ubuntu distribution, but it can be ported to any other distribution based on Debian.
+DASC (Damn Advanced System Configuration, Debian-based Advanced System Configuration) is a ready-to-use configuration for operating systems based on GNU/Linux, consisting of a set of configurable components that provide easy and fast installation and configuration of software for various system use cases. The main priorities of the project are accuracy and striving for perfection, reliability, flexibility and functionality, convenience and productivity of use. At the moment, this configuration is adapted for the Debian distribution, but it can be ported to any other distribution based on Debian.
 
 *In other languages: [English](README.md), [Русский](README.ru.md).*
 

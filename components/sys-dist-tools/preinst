@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+
+#/*****************************************************************************\
+# Creating a configuration archive in /usr/local/share/dasc
+#\............................................................................./
+(
+	cd "$CONFDIR" &&
+	tar \
+		-czf "$PREPDIR/usr/local/share/dasc/dist/dasc.tar.gz" \
+		--owner=root --group=root -- *
+) || exit
+
+#/*****************************************************************************\
+# Changing permissions
+#\............................................................................./
+find \
+	"$PREPDIR/usr/local/bin" \
+	-type f -exec sh -c 'chmod +x "$0" || kill -INT "$PPID"' {} \; || exit
+
+chmod +x "$PREPDIR/usr/local/share/dasc/dist/iso-installer/profiles/default.postinst" || exit
