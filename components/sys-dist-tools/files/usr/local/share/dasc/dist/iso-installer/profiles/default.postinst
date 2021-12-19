@@ -160,6 +160,6 @@ done
 
 [ ":${0%/*}" = :/usr/local/simple-cdd ] &&
 isdirempty /usr/local/simple-cdd &&
-	rm -f /usr/local/simple-cdd
+	rmdir /usr/local/simple-cdd
 
 exit 0
