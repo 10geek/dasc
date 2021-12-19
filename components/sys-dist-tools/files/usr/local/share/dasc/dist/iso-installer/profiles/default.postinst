@@ -149,11 +149,17 @@ rm -rf \
 	"$apt_conf_file" \
 	"$apt_sources_list_link" \
 	"/etc/apt/$apt_dasc_installer_list_name" \
-	"/etc/apt/$apt_dasc_installer_list_name~"
+	"/etc/apt/$apt_dasc_installer_list_name~" \
+	"$0"
+
 dir=${dist_dir%/*}
 while [ ":$dir" != ":$HOME/.local/share" ]; do
 	! [ -e "$dir" ] || ! isdirempty "$dir" || rmdir "$dir"
 	dir=${dir%/*}
 done
+
+[ ":${0%/*}" = :/usr/local/simple-cdd ] &&
+isdirempty /usr/local/simple-cdd &&
+	rm -f /usr/local/simple-cdd
 
 exit 0
