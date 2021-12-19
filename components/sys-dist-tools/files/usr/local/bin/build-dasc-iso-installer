@@ -133,20 +133,17 @@ OPTIND=1
 	err 'unable to get dpkg architecture'
 
 {
-	{ [ -d "$1" ] || {
-		mkdir -p -- "$1" &&
-		cp -afT -- /usr/local/share/dasc/dist/iso-installer "$1"
-	}; } &&
+	{ [ -d "$1" ] || mkdir -p -- "$1"; } &&
+	cp -afT -- /usr/local/share/dasc/dist/iso-installer "$1" &&
 	cd -- "$1" &&
 	checkutil build-simple-cdd dpkg-deb
 } || exit 1
 
 {
 	{ [ -e tmp ] || mkdir tmp; } &&
-	{ [ -e tmp/dasc ] || {
-		mkdir tmp/dasc &&
-		tar -xf /usr/local/share/dasc/dist/dasc.tar.gz -C tmp/dasc
-	}; }
+	rm -rf tmp/dasc &&
+	mkdir tmp/dasc &&
+	tar -xf /usr/local/share/dasc/dist/dasc.tar.gz -C tmp/dasc
 } || exit 1
 
 unset -v local_pkgs local_deps
@@ -221,7 +218,6 @@ local_deps=${local_deps%$lf}
 	echo
 	{
 		printf %s\\n\\n "$local_pkgs"
-		# TODO: printf %s\\n task-xfce-desktop
 		printf %s\\n "$local_deps"
 		for component_dir in \
 			tmp/dasc/common \

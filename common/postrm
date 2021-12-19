@@ -18,7 +18,7 @@ done || exit
 #/*****************************************************************************\
 # Setting old debconf selections of the `tzdata` package and reconfiguring it
 #\............................................................................./
-[ -z "$debconf_selections_tzdata" ] || {
+[ -z "$CONF_TIMEZONE" ] || [ -z "$debconf_selections_tzdata" ] || {
 	printf %s\\n "$debconf_selections_tzdata" | debconf-set-selections &&
 	dpkg-reconfigure tzdata
 } || exit

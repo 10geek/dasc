@@ -88,14 +88,16 @@ done || exit
 #/*****************************************************************************\
 # Saving old debconf selections of the `tzdata` package and reconfiguring it
 #\............................................................................./
-debconf_selections=$(debconf-get-selections | LC_ALL=C awk '$1 == "tzdata"')
-[ -z "$debconf_selections" ] && {
-	debcomp log -e 'unable to get debconf selections for package `tzdata'\'
-	exit 1
-}
-printf %s\\n "$debconf_selections" | debcomp setvar debconf_selections_tzdata || exit
+[ -n "$CONF_TIMEZONE" ] && {
+	debconf_selections=$(debconf-get-selections | LC_ALL=C awk '$1 == "tzdata"')
+	[ -z "$debconf_selections" ] && {
+		debcomp log -e 'unable to get debconf selections for package `tzdata'\'
+		exit 1
+	}
+	printf %s\\n "$debconf_selections" | debcomp setvar debconf_selections_tzdata || exit
 
-dpkg-reconfigure tzdata || exit
+	dpkg-reconfigure tzdata || exit
+}
 
 #/*****************************************************************************\
 # Cleaning up logs
