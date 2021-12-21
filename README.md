@@ -29,7 +29,7 @@ At the moment the project is adapted for the Debian distribution, but it is desi
 			dd if=debian-11-dasc-amd64.iso of=/dev/sdc
 			```
 	3. Boot from the USB key and install the system.
-2. Install or upgrade on an existing system:
+- Install or upgrade on an existing system:
 	- Run the configurator using the following command:
 	```sh
 	sh -c 'eval "$(wget https://raw.githubusercontent.com/10geek/dasc/main/common/files/usr/local/bin/dasc-install -O-)"' dasc-install
