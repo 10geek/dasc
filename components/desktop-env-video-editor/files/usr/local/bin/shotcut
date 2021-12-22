@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+
+. /usr/local/share/dasc/lib/app-wrapper || exit
+exec "$exec_path" --noupgrade "$@"

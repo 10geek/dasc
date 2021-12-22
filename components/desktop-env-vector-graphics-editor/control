@@ -1,0 +1,5 @@
+name=Desktop environment / Vector graphics editor (inkscape)
+name[ru]=Окружение рабочего стола / Векторный графический редактор (inkscape)
+
+depends/desktop-env
+after/desktop-env

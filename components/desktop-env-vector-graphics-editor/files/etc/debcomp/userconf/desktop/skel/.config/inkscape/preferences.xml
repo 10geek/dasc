@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<inkscape xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" version="1">
+  <group id="window">
+    <group id="task" taskset="2" />
+  </group>
+  <group id="options">
+    <group id="maxrecentdocuments" value="0" />
+    <group id="savewindowgeometry" value="0" />
+    <group id="defaultwindowsize" value="2" />
+    <group id="savedialogposition" value="0" />
+    <group id="savedocviewport" value="0" />
+    <group id="cleanupswatches" value="1" />
+    <group id="svgoutput" inlineattrs="1" />
+      <group id="autosave" enable="0" />
+  </group>
+  <group id="desktop">
+    <group id="geometry" maximized="1" />
+  </group>
+  <group id="dialogs">
+    <group id="import" link="embed" />
+  </group>
+</inkscape>

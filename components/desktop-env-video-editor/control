@@ -1,0 +1,5 @@
+name=Desktop environment / Video editor (shotcut)
+name[ru]=Окружение рабочего стола / Видеоредактор (shotcut)
+
+depends/desktop-env
+after/desktop-env

@@ -57,6 +57,7 @@ grep
 	-Fi
 	-vFi
 	-rFi
+history -d  # delete history item
 htop -u "$USER"
 iat in.mdf out.iso  # convert mdf iso
 inotifywait -mqe modify path-to-file | while head -n1 > /dev/null; do on-update-command; done  # monitor changes do action on file update
