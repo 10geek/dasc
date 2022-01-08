@@ -67,6 +67,7 @@ alsa-ucm-conf auto for_manual(pulseaudio conky-all xfce4-pulseaudio-plugin onboa
 alsa-utils auto for_manual(conky-all xfce4-pulseaudio-plugin onboard pulseaudio pulsemixer qasmixer) for(libasound2-data)
 arc auto for_manual(atool) for(atool)
 arj auto for_manual(atool) for(atool)
+aspell-en auto for_manual(reportbug-gtk) for(aspell libaspell15 libenchant-2-2)
 bzip2 auto for_manual(xfce4-settings qt5-gtk-platformtheme xfce4-panel xfce4-statusnotifier-plugin xfce4-systemload-plugin xfce4-appfinder onboard gtk2-engines-murrine xdg-utils compton-conf xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin xfce4-sensors-plugin xfce4-power-manager qt5ct python3-xdg atool conky-all xfce4-fsguard-plugin xfce4-netload-plugin xfce4-diskperf-plugin xfce4-weather-plugin xfce4-wavelan-plugin xfce4-datetime-plugin xfce4-timer-plugin pcmanfm xfce4-clipman-plugin lxhotkey-plugin-openbox pulseaudio xfce4-genmon-plugin xfce4-cpugraph-plugin xfce4-mailwatch-plugin xfce4-cpufreq-plugin light-locker lxsession-edit udiskie lxpolkit xfce4-battery-plugin seahorse qt5-gtk2-platformtheme xfce4-xkb-plugin gtk2-engines gtk2-engines-pixbuf openbox x11vnc unar terminator dillo gnome-system-monitor qasmixer pulsemixer gjs reportbug-gtk) for(tar)
 compton-conf-l10n auto for_manual(compton-conf) for(compton-conf)
 cpio auto for_manual(atool) for(atool)

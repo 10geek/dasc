@@ -30,6 +30,7 @@ SIGNALS='HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2'
 export HOME=/root || exit 1
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin || exit 1
 dist_dir=$HOME/.local/share/dasc/tmp/dasc-dist
+dpkg_conf_file=/etc/dpkg/dpkg.cfg.d/dasc-installer-tmp
 apt_conf_file=/etc/apt/apt.conf.d/00dasc-installer-tmp
 apt_sources_list_link=/etc/apt/sources.list.d/00dasc-installer-tmp.list
 apt_dasc_installer_list_name=dasc-installer-tmp.list
@@ -45,6 +46,10 @@ apt_dasc_installer_list_name=dasc-installer-tmp.list
 } || wait_input_and_exit 1
 
 setfont Uni3-Terminus14
+
+cat <<- EOF > "$dpkg_conf_file" || wait_input_and_exit 1
+force-unsafe-io
+EOF
 
 cat <<- EOF > "$apt_conf_file" || wait_input_and_exit 1
 Dir::Etc::SourceList "$apt_dasc_installer_list_name";
@@ -146,6 +151,7 @@ done
 
 rm -rf \
 	"$dist_dir" \
+	"$dpkg_conf_file" \
 	"$apt_conf_file" \
 	"$apt_sources_list_link" \
 	"/etc/apt/$apt_dasc_installer_list_name" \
@@ -161,5 +167,7 @@ done
 [ ":${0%/*}" = :/usr/local/simple-cdd ] &&
 isdirempty /usr/local/simple-cdd &&
 	rmdir /usr/local/simple-cdd
+
+sync
 
 exit 0

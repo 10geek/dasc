@@ -1,0 +1,4 @@
+name=Desktop environment / Office suite (libreoffice) - Russian localization
+name[ru]=Окружение рабочего стола / Офисный пакет (libreoffice) - Русская локализация
+
+depends/desktop-env-office-suite

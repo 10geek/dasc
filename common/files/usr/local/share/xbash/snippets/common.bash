@@ -9,6 +9,7 @@ apt-file
 	--substring-match search  # find search package by file provides
 	-x search  # regexp find search package by file provides
 aptitude --schedule-only install  # set mark schedule packages to install
+aptitude search '?tag()'  # search package by debtags
 awktest() { local command; for command in gawk 'gawk --posix --lint' mawk 'busybox awk'; do printf %s\\n "$command:"; eval " $command \"\$@\""; printf 'Exit code: %s\n\n' $?; done; }
 chmod +x  # set execution permission
 cp -af  # merge copy a file or directory exactly

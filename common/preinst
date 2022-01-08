@@ -133,6 +133,12 @@ chmod 700 \
 } || exit
 
 #/*****************************************************************************\
+# Preparing unattended-upgrades configuration
+#\............................................................................./
+[ -n "$CONF_UNATTENDED_UPGRADES_ENABLE" ] ||
+rm -f "$PREPDIR/etc/apt/apt.conf.d/20auto-upgrades" || exit
+
+#/*****************************************************************************\
 # Removing files and directories remaining after removing packages, such as
 # /root/snap, /etc/netplan, /etc/cloud, etc.
 #\............................................................................./

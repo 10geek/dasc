@@ -2,6 +2,9 @@
 
 unset -v \
 	debconf_selections_tzdata \
+	debconf_selections_unattended_upgrades \
+	unattended_upgrades_service_active \
+	unattended_upgrades_service_enabled \
 	update_motd_disabled_scripts
 [ -z "$VARFILE" ] || . "$VARFILE" || exit
 
@@ -18,10 +21,34 @@ done || exit
 #/*****************************************************************************\
 # Setting old debconf selections of the `tzdata` package and reconfiguring it
 #\............................................................................./
-[ -z "$CONF_TIMEZONE" ] || [ -z "$debconf_selections_tzdata" ] || {
-	printf %s\\n "$debconf_selections_tzdata" | debconf-set-selections &&
+[ -z "$CONF_TIMEZONE" ] ||
+[ -z "$debconf_selections_tzdata" ] || {
+	debconf-set-selections <<- EOF &&
+	$debconf_selections_tzdata
+	EOF
 	dpkg-reconfigure tzdata
 } || exit
+
+#/*****************************************************************************\
+# Setting old debconf selections of the `unattended-upgrades` package and
+# reconfiguring it
+#\............................................................................./
+[ -z "$CONF_UNATTENDED_UPGRADES_ENABLE" ] || {
+	[ -z "$debconf_selections_unattended_upgrades" ] || {
+		debconf-set-selections <<- EOF &&
+		$debconf_selections_unattended_upgrades
+		EOF
+		dpkg-reconfigure unattended-upgrades
+	} || exit
+	case $unattended_upgrades_service_enabled$CONF_UNATTENDED_UPGRADES_ENABLE in
+	01) systemctl disable unattended-upgrades.service;;
+	10) systemctl enable unattended-upgrades.service;;
+	esac
+	case $unattended_upgrades_service_active$CONF_UNATTENDED_UPGRADES_ENABLE in
+	01) systemctl stop unattended-upgrades.service;;
+	10) systemctl start unattended-upgrades.service;;
+	esac
+}
 
 #/*****************************************************************************\
 # Applying configuration changes

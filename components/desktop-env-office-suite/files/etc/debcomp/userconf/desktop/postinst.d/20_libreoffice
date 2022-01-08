@@ -3,4 +3,7 @@
 #/*****************************************************************************\
 # Changing permissions
 #\............................................................................./
-chmod 700 ~/.claws-mail || exit
+{
+	chmod 700 ~/.config/libreoffice/4 &&
+	chmod 600 ~/.config/libreoffice/4/user/registrymodifications.xcu
+} || exit

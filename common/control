@@ -42,3 +42,14 @@ conf/prevent_users_shutdown/name=Prevent all users except root from shutting dow
 conf/prevent_users_shutdown/name[ru]=Запретить всем пользователям, кроме root, завершать работу системы
 conf/prevent_users_shutdown/description=Prevent all users other than root from performing actions such as shutdown, reboot, suspend, hibernate.
 conf/prevent_users_shutdown/description[ru]=Запретить всем пользователям, кроме root, выполнять такие действия, как завершение работы системы, перезагрузка, переход в ждущий и спящий режимы.
+
+conf/unattended_upgrades_enable/type=select
+conf/unattended_upgrades_enable/name=Automatic update of security related packages
+conf/unattended_upgrades_enable/name[ru]=Автоматическое обновление пакетов, связанных с безопасностью
+conf/unattended_upgrades_enable/default=1
+conf/unattended_upgrades_enable/options/1/name=Enable
+conf/unattended_upgrades_enable/options/1/name[ru]=Включить
+conf/unattended_upgrades_enable/options/0/name=Disable
+conf/unattended_upgrades_enable/options/0/name[ru]=Отключить
+conf/unattended_upgrades_enable/options//name=Do not change
+conf/unattended_upgrades_enable/options//name[ru]=Не изменять

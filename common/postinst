@@ -94,9 +94,51 @@ done || exit
 		debcomp log -e 'unable to get debconf selections for package `tzdata'\'
 		exit 1
 	}
-	printf %s\\n "$debconf_selections" | debcomp setvar debconf_selections_tzdata || exit
+	debcomp setvar debconf_selections_tzdata <<- EOF || exit
+	$debconf_selections
+	EOF
 
 	dpkg-reconfigure tzdata || exit
+}
+
+#/*****************************************************************************\
+# Saving old debconf selections of the `unattended-upgrades` package and
+# reconfiguring it
+#\............................................................................./
+[ -n "$CONF_UNATTENDED_UPGRADES_ENABLE" ] && {
+	debconf_selections=$(debconf-get-selections | LC_ALL=C awk '$1 == "unattended-upgrades"')
+	[ -z "$debconf_selections" ] && {
+		debcomp log -e 'unable to get debconf selections for package `unattended-upgrades'\'
+		exit 1
+	}
+	debcomp setvar debconf_selections_unattended_upgrades <<- EOF || exit
+	$debconf_selections
+	EOF
+
+	! systemctl -q is-active unattended-upgrades.service
+	debcomp setvar unattended_upgrades_service_active $? || exit
+	! systemctl -q is-enabled unattended-upgrades.service
+	debcomp setvar unattended_upgrades_service_enabled $? || exit
+	case $CONF_UNATTENDED_UPGRADES_ENABLE in
+	1)
+		value=true
+		{
+			systemctl enable unattended-upgrades.service &&
+			systemctl start unattended-upgrades.service
+		} || exit
+		;;
+	*)
+		value=false
+		{
+			systemctl disable unattended-upgrades.service &&
+			systemctl stop unattended-upgrades.service
+		} || exit
+		;;
+	esac
+	debconf-set-selections <<- EOF || exit
+	unattended-upgrades unattended-upgrades/enable_auto_updates boolean $value
+	EOF
+	dpkg-reconfigure unattended-upgrades || exit
 }
 
 #/*****************************************************************************\

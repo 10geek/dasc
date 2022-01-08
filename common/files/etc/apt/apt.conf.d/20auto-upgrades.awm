@@ -1,0 +1,2 @@
+APT::Periodic::Update-Package-Lists "<?awk print ENVIRON["CONF_UNATTENDED_UPGRADES_ENABLE"] + 0 ?>";
+APT::Periodic::Unattended-Upgrade "<?awk print ENVIRON["CONF_UNATTENDED_UPGRADES_ENABLE"] + 0 ?>";

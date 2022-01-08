@@ -1,0 +1,6 @@
+libreoffice manual
+hunspell-ru auto for_manual(libreoffice) for(libreoffice libreoffice-l10n-ru libhunspell-1.7-0)
+hyphen-ru auto for_manual(libreoffice) for(libreoffice libreoffice-l10n-ru)
+libreoffice-l10n-ru auto for_manual(libreoffice) for(libreoffice)
+libreoffice-lightproof-ru-ru auto for_manual(libreoffice) for(libreoffice libreoffice-l10n-ru)
+mythes-ru auto for_manual(libreoffice) for(libreoffice libreoffice-l10n-ru)

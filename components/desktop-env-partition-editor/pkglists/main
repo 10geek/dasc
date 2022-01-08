@@ -1,0 +1,22 @@
+btrfs-progs manual
+cryptsetup manual
+exfatprogs manual
+f2fs-tools manual
+gparted manual
+hfsprogs manual
+hfsutils manual
+lvm2 manual
+nilfs-tools manual
+dmsetup auto for_manual(gparted lvm2 cryptsetup) for(gparted)
+dosfstools auto for_manual(gparted cryptsetup) for(gparted util-linux cryptsetup)
+e2fsprogs auto for_manual(gparted) for(gparted)
+gpart auto for_manual(gparted) for(gparted e2fsprogs)
+jfsutils auto for_manual(gparted) for(gparted)
+mtools auto for_manual(gparted) for(gparted)
+ntfs-3g auto for_manual(gparted) for(gparted)
+reiser4progs auto for_manual(gparted) for(gparted)
+reiserfsprogs auto for_manual(gparted) for(gparted)
+udftools auto for_manual(gparted) for(gparted)
+util-linux auto for_manual(gparted) for(reiserfsprogs gpart)
+xfsdump auto for_manual(gparted) for(xfsprogs)
+xfsprogs auto for_manual(gparted) for(gparted)

@@ -9,3 +9,5 @@ after/svcdiag-hw
 # `gsmartcontrol` package depends on `smartmontools` package
 depends/hw-base
 after/hw-base
+
+depends/desktop-env-partition-editor

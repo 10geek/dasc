@@ -5,6 +5,7 @@ common/remove_installer_logs=1
 common/timezone
 common/enable_serial_port_console=0
 common/prevent_users_shutdown=0
+common/unattended_upgrades_enable=1
 components/desktop-env=1
 components/desktop-env/greeter_numlock_enable=1
 components/desktop-env-appimage-manager=1
@@ -20,6 +21,9 @@ components/desktop-env-l10n-ru=1
 components/desktop-env-mail-client=1
 components/desktop-env-media-file-data-tools=1
 components/desktop-env-nm-config=1
+components/desktop-env-office-suite=1
+components/desktop-env-office-suite-l10n-ru=1
+components/desktop-env-partition-editor=1
 components/desktop-env-pdf-viewer=1
 components/desktop-env-pkgui=1
 components/desktop-env-player=1

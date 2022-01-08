@@ -2,9 +2,9 @@
 #
 # debcomp - a configuration deployment system for Debian-based operating systems
 #
-# Version: 1.10.3 (29/11/2021)
+# Version: 1.10.4 (07/01/2022)
 #
-# Copyright (c) 2021 10geek
+# Copyright (c) 2021-2022 10geek
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -3021,7 +3021,6 @@ do_install() {
 	unset -v \
 		pkgs_list_install \
 		pkgs_list_manual
-	do_install__unattended_upgrades_stopped=0
 	do_install__sources_list_changed=0
 	do_install__sources_list_exist=0
 
@@ -3081,11 +3080,6 @@ do_install() {
 			do_install__reset_pkgs_state &&
 			unset -v pkgs_list_install
 		} || set 1
-		[ $do_install__unattended_upgrades_stopped -eq 1 ] && {
-			log_ml 'starting unattended-upgrades service ...' 'ru:запуск сервиса unattended-upgrades ...'
-			systemctl start unattended-upgrades.service || set 1
-		}
-		unset -v do_install__unattended_upgrades_stopped
 		[ $simulate_install -eq 1 ] || {
 			rm -rf "$vardir/prep" "$vardir/tmp" &&
 			release_lock "$vardir/lock"
@@ -3097,14 +3091,6 @@ do_install() {
 	[ $simulate_install -eq 1 ] || {
 		mkvardir &&
 		get_lock "$vardir/lock" 1 1 &&
-		{
-			! checkutil -s systemctl ||
-			! systemctl -q is-active unattended-upgrades.service || {
-				log_ml 'stopping unattended-upgrades service ...' 'ru:остановка сервиса unattended-upgrades ...'
-				do_install__unattended_upgrades_stopped=1
-				systemctl stop unattended-upgrades.service
-			}
-		} &&
 		{ ! [ -d "$vardir/rollback" ] || {
 			log_ml 'rolling back a previously installed configuration ...' 'ru:откат установленной ранее конфигурации ...'
 			"/usr/local/bin/$program_name" rollback -yL
@@ -3528,7 +3514,7 @@ unset -v \
 	confdir \
 	dpkg_arch
 program_name=${0##*/}
-program_version=1.10.3
+program_version=1.10.4
 is_interactive=0
 simulate_install=0
 load_current_conf=0

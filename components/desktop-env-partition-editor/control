@@ -1,0 +1,6 @@
+name=Desktop environment / Partition editor (gparted)
+name[ru]=Окружение рабочего стола / Редактор разделов (gparted)
+
+depends/desktop-env
+after/desktop-env
+depends/hw-base

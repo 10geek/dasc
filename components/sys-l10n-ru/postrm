@@ -8,6 +8,8 @@ unset -v debconf_selections_locales
 # Setting old debconf selections of the `locales` package and reconfiguring it
 #\............................................................................./
 [ -z "$debconf_selections_locales" ] || {
-	printf %s\\n "$debconf_selections_locales" | debconf-set-selections &&
+	debconf-set-selections <<- EOF &&
+	$debconf_selections_locales
+	EOF
 	dpkg-reconfigure locales
 } || exit

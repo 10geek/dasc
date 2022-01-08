@@ -1,0 +1,5 @@
+name=Desktop environment / Office suite (libreoffice)
+name[ru]=Окружение рабочего стола / Офисный пакет (libreoffice)
+
+depends/desktop-env
+after/desktop-env
